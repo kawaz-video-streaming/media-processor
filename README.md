@@ -1,2 +1,2 @@
 # media-processor
-this service processes the media 
+this is the media processor service
