@@ -3,6 +3,7 @@ import { startServer } from "./server/server";
 import { StorageClient } from "@ido_kawaz/storage-client";
 import { AmqpClient } from "@ido_kawaz/amqp-client";
 import { initializeDB } from "./db/db";
+import { createConsumers } from "../background/consumers";
 
 const startAmqp = async (amqpClient: AmqpClient) => {
     const startTime = Date.now();
@@ -13,7 +14,8 @@ const startAmqp = async (amqpClient: AmqpClient) => {
 
 export const startSystem = async (config: SystemConfig) => {
     const storageClient = new StorageClient(config.storage);
-    const amqpClient = new AmqpClient(config.amqp, []);
+    const consumers = createConsumers(storageClient);
+    const amqpClient = new AmqpClient(config.amqp, consumers);
     const dals = await initializeDB(config.db);
     await startAmqp(amqpClient);
     await startServer(config.server, storageClient, amqpClient, dals);
