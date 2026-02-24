@@ -15,9 +15,9 @@
   },
   "dependencies": {
     "@ido_kawaz/amqp-client": "^3.0.0",
-    "@ido_kawaz/storage-client": "^1.0.1",
-    "express": "^5.2.1",
+    "@ido_kawaz/storage-client": "^1.1.0",
     "cors": "^2.8.6",
+    "express": "^5.2.1",
     "http-status-codes": "^2.3.0",
     "joi": "^17.13.3",
     "mongoose": "^9.2.1",
@@ -28,9 +28,9 @@
     "swagger-ui-express": "^5.0.0"
   },
   "devDependencies": {
+    "@types/cors": "2.8.19",
     "@types/express": "^5.0.6",
     "@types/ramda": "^0.31.1",
-    "@types/cors": "2.8.19",
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.6",
     "rimraf": "^6.0.0",
