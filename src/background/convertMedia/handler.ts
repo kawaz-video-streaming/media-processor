@@ -1,7 +1,20 @@
 import { StorageClient } from "@ido_kawaz/storage-client";
-import { ConvertMedia } from ".";
+import { convertMediaToDashStream, generateSubtitleTracks, initializeWorkspace, cleanupWorkspace, uploadStreamToStorage, writeMediaToDirectory } from "./utils";
+import { ConvertMedia, ConvertMediaConfig } from "./index";
 
-export const convertMediaHandler = (_storageClient: StorageClient) => async (_payload: ConvertMedia) => {
-    //TODO: implement media conversion logic here
-    // const video = await storageClient.downloadObject(bucket, path);
-}
+export const convertMediaHandler = (storageClient: StorageClient, config: ConvertMediaConfig) =>
+    async ({ mediaStorageBucket, mediaRoutingKey, mediaName, areSubtitlesIncluded }: ConvertMedia) => {
+        const mediaStream = await storageClient.downloadObject(mediaStorageBucket, mediaRoutingKey);
+        const { workDirPath, mediaPath, mpdPath } = initializeWorkspace(mediaName);
+        try {
+            await writeMediaToDirectory(mediaStream, mediaPath);
+            if (areSubtitlesIncluded) {
+                await generateSubtitleTracks(workDirPath, mediaPath);
+            }
+            await convertMediaToDashStream(mediaPath, mpdPath);
+            await uploadStreamToStorage(storageClient, mediaName, workDirPath, config);
+        } finally {
+            await cleanupWorkspace(workDirPath);
+        }
+    };
+
