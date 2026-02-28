@@ -13,6 +13,7 @@ const startAmqp = async (amqpClient: AmqpClient) => {
 }
 
 export const startSystem = async (config: SystemConfig) => {
+    console.log(config.storage);
     const storageClient = new StorageClient(config.storage);
     const consumers = createConsumers(storageClient, config.consumers);
     const amqpClient = new AmqpClient(config.amqp, consumers);

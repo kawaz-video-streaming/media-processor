@@ -11,7 +11,7 @@ import { RunInBatches } from '../../utils/batches';
 const removeExtension = (fileName: string) => fileName.replace(path.extname(fileName), '');
 
 export const initializeWorkspace = (mediaName: string): WorkPaths => {
-    const workDirPath = formatPath(path.resolve(fs.mkdtempSync(path.join(__dirname, '../../../../tmp', `${removeExtension(mediaName)}-`))));
+    const workDirPath = formatPath(path.resolve(fs.mkdtempSync(path.join(__dirname, '../../../tmp', `${removeExtension(mediaName)}-`))));
     const mediaPath = formatPath(path.resolve(workDirPath, mediaName));
     const mpdPath = formatPath(path.resolve(workDirPath, 'output.mpd'));
     return { mediaPath, mpdPath, workDirPath };

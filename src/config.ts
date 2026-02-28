@@ -13,7 +13,7 @@ class InvalidConfigError extends Error {
   }
 }
 
-interface EnvironmentVariables extends Record<string, any> {
+interface EnvironmentVariables {
   NODE_ENV: string;
   PORT: number;
   SECURED: boolean;
@@ -53,7 +53,7 @@ export const getConfig = (env: NodeJS.ProcessEnv): SystemConfig => {
       dbConnectionString: envVars.MONGO_CONNECTION_STRING
     },
     storage: createStorageClientConfig(),
-    amqp: createAmqpConfig(envVars),
+    amqp: createAmqpConfig(),
     consumers: {
       convertMedia: {
         vodBucketName: envVars.VOD_BUCKET_NAME,
