@@ -5,7 +5,7 @@ import { StatusCodes } from "http-status-codes";
 
 export const RequestHandlerDecorator = (functionName: string, handler: RequestHandler) =>
     async (req: Request, res: Response, next: NextFunction) => {
-        const logger = pino({ name: 'kawaz-backend' });
+        const logger = pino({ name: 'media-processor' });
         const startTime = Date.now();
         logger.info({ handler: functionName, method: req.method }, `Starting running ${functionName} handler`);
         try {

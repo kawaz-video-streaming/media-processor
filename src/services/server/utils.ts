@@ -5,7 +5,7 @@ import cors from "cors";
 import express, { Express } from "express";
 import { StatusCodes } from "http-status-codes";
 import swaggerUi from "swagger-ui-express";
-import { swaggerSpec } from "../../config/swagger";
+import { swaggerSpec } from "../swagger";
 import { RequestErrorHandler } from "../../utils/decorators";
 import { Dals } from "../db/types";
 

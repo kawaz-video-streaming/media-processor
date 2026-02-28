@@ -14,8 +14,8 @@
     "clean:advanced": "rimraf dist && rimraf node_modules && rimraf package-lock.json"
   },
   "dependencies": {
-    "@ido_kawaz/amqp-client": "^3.0.0",
-    "@ido_kawaz/storage-client": "^2.0.0",
+    "@ido_kawaz/amqp-client": "^4.0.0",
+    "@ido_kawaz/storage-client": "^3.0.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "fluent-ffmpeg": "^2.1.3",

@@ -26,4 +26,4 @@ const convertMediaSchema = Joi.object<ConvertMedia>({
     areSubtitlesIncluded: Joi.boolean().default(false)
 })
 
-export const validateConvertMediaPayload = validateSchema(convertMediaSchema);
+export const validateConvertMediaPayload = validateSchema(convertMediaSchema);   
