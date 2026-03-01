@@ -1,18 +1,16 @@
-import mongoose, { Model } from "mongoose";
-import { Dals, Models } from "./types";
-
+import { MongoClient } from "@ido_kawaz/mongo-client";
 
 //TODO: add models and dals for media processor service
-export const createModels = (_connection: mongoose.Connection): Models => {
+export const createModels = (_mongoClient: MongoClient) => {
     return {
     };
 }
 
-export const ensureIndexes = async (models: Models) => {
-    await Promise.all(Object.values<Model<any>>(models).map(model => model.ensureIndexes()));
-}
+type Models = ReturnType<typeof createModels>;
 
-export const createDals = (_models: Models): Dals => {
+export const createDals = (_models: Models) => {
     return {
     };
 }
+
+export type Dals = ReturnType<typeof createDals>;

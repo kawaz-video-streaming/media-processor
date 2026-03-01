@@ -1,1 +1,0 @@
-export const CONNECTION_TIMEOUT_MS = 1000;

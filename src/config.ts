@@ -1,10 +1,10 @@
 import Joi from "joi";
 import { isNotNil } from "ramda";
-import { DatabaseConfig } from "./services/db/types";
-import { ServerConfig } from "./services/server/types";
+import { ServerConfig } from "./services/server";
 import { createStorageClientConfig, StorageClientConfig } from "@ido_kawaz/storage-client";
 import { createAmqpConfig, AmqpConfig } from "@ido_kawaz/amqp-client";
 import { ConsumersConfig } from "./background/config";
+import { createMongoConfig, MongoConfig } from "@ido_kawaz/mongo-client";
 
 class InvalidConfigError extends Error {
   constructor(error: Joi.ValidationError) {
@@ -26,14 +26,13 @@ const environmentVariablesSchema = Joi.object<EnvironmentVariables>({
   NODE_ENV: Joi.string().valid("local", "development", "master", "pre-prod", "production", "test").default("development"),
   PORT: Joi.number().required(),
   SECURED: Joi.boolean().default(false),
-  MONGO_CONNECTION_STRING: Joi.string().uri().required(),
   VOD_BUCKET_NAME: Joi.string().required(),
   UPLOADING_BATCH_SIZE: Joi.number().required()
 }).unknown();
 
 export interface SystemConfig {
   env: string;
-  db: DatabaseConfig;
+  db: MongoConfig;
   amqp: AmqpConfig;
   consumers: ConsumersConfig;
   storage: StorageClientConfig;
@@ -48,12 +47,10 @@ export const getConfig = (env: NodeJS.ProcessEnv): SystemConfig => {
 
   const envVars: EnvironmentVariables = value;
   return {
-    env: envVars.NODE_ENV,
-    db: {
-      dbConnectionString: envVars.MONGO_CONNECTION_STRING
-    },
+    db: createMongoConfig(),
     storage: createStorageClientConfig(),
     amqp: createAmqpConfig(),
+    env: envVars.NODE_ENV,
     consumers: {
       convertMedia: {
         vodBucketName: envVars.VOD_BUCKET_NAME,

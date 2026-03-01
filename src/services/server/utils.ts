@@ -5,9 +5,9 @@ import cors from "cors";
 import express, { Express } from "express";
 import { StatusCodes } from "http-status-codes";
 import swaggerUi from "swagger-ui-express";
-import { swaggerSpec } from "../swagger";
 import { RequestErrorHandler } from "../../utils/decorators";
-import { Dals } from "../db/types";
+import { Dals } from "../db/utils";
+import { swaggerSpec } from "../swagger";
 
 export const registerMiddlewares = (app: Express) => {
     app.use(cors());
