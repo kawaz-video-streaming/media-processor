@@ -1,54 +1,46 @@
-import Joi from "joi";
-import { isNotNil } from "ramda";
-import { ServerConfig } from "./services/server";
-import { createStorageClientConfig, StorageClientConfig } from "@ido_kawaz/storage-client";
-import { createAmqpConfig, AmqpConfig } from "@ido_kawaz/amqp-client";
-import { ConsumersConfig } from "./background/config";
+import { AmqpConfig, createAmqpConfig } from "@ido_kawaz/amqp-client";
 import { createMongoConfig, MongoConfig } from "@ido_kawaz/mongo-client";
+import { createServerConfig, ServerConfig } from "@ido_kawaz/server-framework";
+import { createStorageConfig, StorageConfig } from '@ido_kawaz/storage-client';
+import { z } from 'zod';
+import { ConsumersConfig } from "./background/config";
 
 class InvalidConfigError extends Error {
-  constructor(error: Joi.ValidationError) {
-    const message = `Invalid configuration: \n${error.details.map(detail => detail.message).join(',\n')}`;
+  constructor(error: z.ZodError) {
+    const message = `Invalid configuration: \n${error.issues.map(detail => detail.message).join(',\n')}`;
     super(message);
   }
 }
 
-interface EnvironmentVariables {
-  NODE_ENV: string;
-  PORT: number;
-  SECURED: boolean;
-  MONGO_CONNECTION_STRING: string;
-  VOD_BUCKET_NAME: string;
-  UPLOADING_BATCH_SIZE: number;
-}
+const environments = ["local", "development", "test"] as const;
 
-const environmentVariablesSchema = Joi.object<EnvironmentVariables>({
-  NODE_ENV: Joi.string().valid("local", "development", "master", "pre-prod", "production", "test").default("development"),
-  PORT: Joi.number().required(),
-  SECURED: Joi.boolean().default(false),
-  VOD_BUCKET_NAME: Joi.string().required(),
-  UPLOADING_BATCH_SIZE: Joi.number().required()
-}).unknown();
+export type Environment = typeof environments[number];
+
+const environmentVariablesSchema = z.object({
+  NODE_ENV: z.enum(environments).default("development"),
+  VOD_BUCKET_NAME: z.string(),
+  UPLOADING_BATCH_SIZE: z.coerce.number()
+});
 
 export interface SystemConfig {
-  env: string;
+  env: Environment;
   db: MongoConfig;
   amqp: AmqpConfig;
   consumers: ConsumersConfig;
-  storage: StorageClientConfig;
+  storage: StorageConfig;
   server: ServerConfig;
 }
 
 export const getConfig = (env: NodeJS.ProcessEnv): SystemConfig => {
-  const { error, value } = environmentVariablesSchema.validate(env, { abortEarly: false, convert: true });
-  if (isNotNil(error)) {
+  const { success, error, data: envVars } = environmentVariablesSchema.safeParse(env);
+  if (!success) {
     throw new InvalidConfigError(error);
   }
 
-  const envVars: EnvironmentVariables = value;
   return {
+    server: createServerConfig(),
     db: createMongoConfig(),
-    storage: createStorageClientConfig(),
+    storage: createStorageConfig(),
     amqp: createAmqpConfig(),
     env: envVars.NODE_ENV,
     consumers: {
@@ -57,9 +49,5 @@ export const getConfig = (env: NodeJS.ProcessEnv): SystemConfig => {
         uploadingBatchSize: envVars.UPLOADING_BATCH_SIZE
       }
     },
-    server: {
-      port: envVars.PORT,
-      secured: envVars.SECURED
-    }
   }
 }

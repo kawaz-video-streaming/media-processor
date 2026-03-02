@@ -1,29 +1,13 @@
-import Joi from "joi";
-import { validateSchema } from "../../utils/joi";
+import { Consumer } from "@ido_kawaz/amqp-client";
+import { StorageClient } from "@ido_kawaz/storage-client";
+import { ConvertMediaConsumerBinding, createConvertMediaConsumerBinding } from "./binding";
+import { convertMediaHandler } from "./handler";
+import { ConvertMedia, ConvertMediaConfig, validateConvertMediaPayload } from "./types";
 
-export interface WorkPaths {
-    workDirPath: string;
-    mediaPath: string;
-    mpdPath: string;
-}
 
-export interface ConvertMedia {
-    mediaName: string;
-    mediaStorageBucket: string;
-    mediaRoutingKey: string;
-    areSubtitlesIncluded: boolean;
-}
-
-export interface ConvertMediaConfig {
-    vodBucketName: string;
-    uploadingBatchSize: number;
-}
-
-const convertMediaSchema = Joi.object<ConvertMedia>({
-    mediaName: Joi.string().required(),
-    mediaStorageBucket: Joi.string().required(),
-    mediaRoutingKey: Joi.string().required(),
-    areSubtitlesIncluded: Joi.boolean().default(false)
-})
-
-export const validateConvertMediaPayload = validateSchema(convertMediaSchema);   
+export const createConvertMediaConsumer = (storageClient: StorageClient, config: ConvertMediaConfig) =>
+    new Consumer<ConvertMedia, ConvertMediaConsumerBinding>(
+        'convert-media',
+        createConvertMediaConsumerBinding(),
+        validateConvertMediaPayload,
+        convertMediaHandler(storageClient, config));

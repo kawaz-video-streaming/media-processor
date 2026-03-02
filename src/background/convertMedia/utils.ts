@@ -3,10 +3,10 @@ import fs from 'fs';
 import path from 'path';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
-import { ConvertMediaConfig, WorkPaths } from './index';
+import { RunInBatches } from '../../utils/batches';
 import { runFfmpeg, runFfprobe } from '../../utils/ffmpeg';
 import { collectFilesRecursively, formatPath } from '../../utils/files';
-import { RunInBatches } from '../../utils/batches';
+import { ConvertMediaConfig, WorkPaths } from './types';
 
 const removeExtension = (fileName: string) => fileName.replace(path.extname(fileName), '');
 

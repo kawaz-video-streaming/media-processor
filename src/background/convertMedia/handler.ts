@@ -1,6 +1,6 @@
 import { StorageClient } from "@ido_kawaz/storage-client";
-import { convertMediaToDashStream, generateSubtitleTracks, initializeWorkspace, cleanupWorkspace, uploadStreamToStorage, writeMediaToDirectory } from "./utils";
-import { ConvertMedia, ConvertMediaConfig } from "./index";
+import { ConvertMedia, ConvertMediaConfig } from "./types";
+import { cleanupWorkspace, convertMediaToDashStream, generateSubtitleTracks, initializeWorkspace, uploadStreamToStorage, writeMediaToDirectory } from "./utils";
 
 export const convertMediaHandler = (storageClient: StorageClient, config: ConvertMediaConfig) =>
     async ({ mediaStorageBucket, mediaRoutingKey, mediaName, areSubtitlesIncluded }: ConvertMedia) => {

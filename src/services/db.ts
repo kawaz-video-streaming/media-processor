@@ -1,5 +1,6 @@
 import { MongoClient, MongoConfig } from "@ido_kawaz/mongo-client";
-import { createModels, createDals, Dals } from "./utils";
+import { createDals, createModels } from "../dal";
+import { Dals } from "../dal/types";
 
 export const initializeDB = async (config: MongoConfig): Promise<Dals> => {
     const mongoClient = new MongoClient(config);

@@ -1,6 +1,6 @@
 import { StorageClient } from "@ido_kawaz/storage-client";
-import { createConvertMediaConsumer } from "./convertMedia/consumer";
 import { ConsumersConfig } from "./config";
+import { createConvertMediaConsumer } from "./convertMedia";
 
 export const createConsumers = (storageClient: StorageClient, config: ConsumersConfig) => {
     return [

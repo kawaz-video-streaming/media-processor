@@ -1,12 +1,13 @@
 import swaggerJsdoc from "swagger-jsdoc";
+import { SERVICE_NAME } from "../consts";
 
 const options: swaggerJsdoc.Options = {
     definition: {
         openapi: "3.0.0",
         info: {
-            title: "Media Processor API",
+            title: `${SERVICE_NAME} API`,
             version: "1.0.0",
-            description: "API documentation for Media Processor service",
+            description: `API documentation for ${SERVICE_NAME} service`,
         },
         servers: [
             {
@@ -39,7 +40,7 @@ const options: swaggerJsdoc.Options = {
             },
         },
     },
-    apis: ["./src/routes/**/*.ts", "./src/services/server/utils.ts"],
+    apis: ["./src/api/**/*.ts"],
 };
 
 export const swaggerSpec = swaggerJsdoc(options);
