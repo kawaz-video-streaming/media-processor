@@ -1,10 +1,10 @@
 import { createConsumerBinding } from "@ido_kawaz/amqp-client";
 
-const CONVERT_MEDIA_CONSUMER_QUEUE = 'media-processor-converter'
-const CONVERT_MEDIA_CONSUMER_EXCHANGE = 'converter'
-const CONVERT_MEDIA_CONSUMER_TOPIC = 'uploaded.media'
+const CONVERT_MEDIA_CONSUMER_QUEUE = 'media-processor-convert'
+const CONVERT_MEDIA_CONSUMER_EXCHANGE = 'convert'
+const CONVERT_MEDIA_CONSUMER_TOPIC = 'convert.media'
 
-export const createConvertMediaConsumerBinding =
+export const createConvertConsumerBinding =
     () => createConsumerBinding(CONVERT_MEDIA_CONSUMER_QUEUE, CONVERT_MEDIA_CONSUMER_EXCHANGE, CONVERT_MEDIA_CONSUMER_TOPIC);
 
 export type ConvertMediaConsumerBinding = {

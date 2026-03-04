@@ -1,5 +1,5 @@
 import { AmqpClient } from "@ido_kawaz/amqp-client";
-import { startServer } from "@ido_kawaz/server-framework";
+import { createServer } from "@ido_kawaz/server-framework";
 import { StorageClient } from "@ido_kawaz/storage-client";
 import { registerRoutes } from "../api";
 import { createConsumers } from "../background";
@@ -13,5 +13,6 @@ export const startSystem = async (config: SystemConfig) => {
     const amqpClient = new AmqpClient(config.amqp, consumers);
     const dals = await initializeDB(config.db);
     await amqpClient.start(SERVICE_NAME);
-    await startServer(config.server, registerRoutes, storageClient, amqpClient, dals);
+    const server = createServer(config.server, registerRoutes);
+    await server.start(storageClient, amqpClient, dals);
 }

@@ -6,7 +6,7 @@ import { pipeline } from 'stream/promises';
 import { RunInBatches } from '../../utils/batches';
 import { runFfmpeg, runFfprobe } from '../../utils/ffmpeg';
 import { collectFilesRecursively, formatPath } from '../../utils/files';
-import { ConvertMediaConfig, WorkPaths } from './types';
+import { ConvertConfig, WorkPaths } from './types';
 
 const removeExtension = (fileName: string) => fileName.replace(path.extname(fileName), '');
 
@@ -71,7 +71,7 @@ export const uploadStreamToStorage = async (
     storageClient: StorageClient,
     mediaName: string,
     workDirPath: string,
-    { vodBucketName, uploadingBatchSize }: ConvertMediaConfig,
+    { vodBucketName, uploadingBatchSize }: ConvertConfig,
 ) => {
     const uploadBucket = vodBucketName;
     await storageClient.ensureBucket(uploadBucket);

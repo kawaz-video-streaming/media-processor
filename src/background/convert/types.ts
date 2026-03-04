@@ -7,23 +7,23 @@ export interface WorkPaths {
     mpdPath: string;
 }
 
-export interface ConvertMedia {
+export interface Convert {
     mediaName: string;
     mediaStorageBucket: string;
     mediaRoutingKey: string;
     areSubtitlesIncluded: boolean;
 }
 
-export interface ConvertMediaConfig {
+export interface ConvertConfig {
     vodBucketName: string;
     uploadingBatchSize: number;
 }
 
-const convertMediaSchema = z.object({
+const convertSchema = z.object({
     mediaName: z.string(),
     mediaStorageBucket: z.string(),
     mediaRoutingKey: z.string(),
     areSubtitlesIncluded: z.coerce.boolean().default(false)
 })
 
-export const validateConvertMediaPayload = validateSchema<ConvertMedia>(convertMediaSchema);   
+export const validateConvertPayload = validateSchema<Convert>(convertSchema);   

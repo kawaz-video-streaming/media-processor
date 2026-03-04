@@ -1,5 +1,5 @@
-import { ConvertMediaConfig } from "./convertMedia/types";
+import { ConvertConfig } from "./convert/types";
 
 export interface ConsumersConfig {
-    convertMedia: ConvertMediaConfig
+    convertMedia: ConvertConfig
 }
