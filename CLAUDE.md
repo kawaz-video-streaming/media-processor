@@ -94,5 +94,5 @@ UPLOADING_BATCH_SIZE=100
 
 - `npm test` builds before running — if TypeScript errors exist, tests won't run
 - `--runInBand` is required; tests are not designed to run in parallel
-- The E2E test (`src/__tests__/integration.test.ts`) runs real FFmpeg conversion against a generated fixture video and verifies actual DASH output (MPD + `.m4s` segments). Only the S3 `StorageClient` is mocked. It generates a fixture video in `beforeAll` using FFmpeg's `lavfi` source, so FFmpeg must be on `PATH`.
+- The E2E test (`src/__tests__/integration.test.ts`) mocks only FFmpeg binaries (`runFfmpeg`/`runFfprobe`) and the S3 `StorageClient` — workspace creation, stream writing, file collection, batch upload orchestration, and cleanup all run for real. The `runFfmpeg` mock creates fake DASH output files so downstream steps have real files to process.
 - TypeScript's `noUnusedLocals` / `noUnusedParameters` will cause build failures if you leave unused imports — clean them up before running tests
