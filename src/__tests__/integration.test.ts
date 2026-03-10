@@ -1,169 +1,169 @@
+import fs from 'fs';
+import path from 'path';
 import { Readable } from 'stream';
 import { StorageClient } from '@ido_kawaz/storage-client';
 import { convertMediaHandler } from '../background/convert/handler';
-import { validateConvertPayload, ConvertConfig, Convert } from '../background/convert/types';
-import { CONVERT_MEDIA_CONSUMER_EXCHANGE, CONVERT_MEDIA_CONSUMER_TOPIC } from '../background/convert/binding';
+import * as convertUtils from '../background/convert/utils';
+import { createTempFolder } from '../utils/files';
+import * as ffmpegUtils from '../utils/ffmpeg';
 
-jest.mock('../background/convert/utils', () => ({
-    initializeWorkspace: jest.fn(),
-    writeMediaToDirectory: jest.fn(),
-    generateSubtitleTracks: jest.fn(),
-    convertMediaToDashStream: jest.fn(),
-    uploadStreamToStorage: jest.fn(),
-    cleanupWorkspace: jest.fn()
-}));
+jest.mock('../utils/ffmpeg');
 
-import {
-    initializeWorkspace,
-    writeMediaToDirectory,
-    generateSubtitleTracks,
-    convertMediaToDashStream,
-    uploadStreamToStorage,
-    cleanupWorkspace
-} from '../background/convert/utils';
+const mockedRunFfmpeg = ffmpegUtils.runFfmpeg as jest.MockedFunction<typeof ffmpegUtils.runFfmpeg>;
+const mockedRunFfprobe = ffmpegUtils.runFfprobe as jest.MockedFunction<typeof ffmpegUtils.runFfprobe>;
 
-const mockedInitializeWorkspace = initializeWorkspace as jest.MockedFunction<typeof initializeWorkspace>;
-const mockedWriteMedia = writeMediaToDirectory as jest.MockedFunction<typeof writeMediaToDirectory>;
-const mockedGenerateSubtitles = generateSubtitleTracks as jest.MockedFunction<typeof generateSubtitleTracks>;
-const mockedConvertMedia = convertMediaToDashStream as jest.MockedFunction<typeof convertMediaToDashStream>;
-const mockedUploadStream = uploadStreamToStorage as jest.MockedFunction<typeof uploadStreamToStorage>;
-const mockedCleanup = cleanupWorkspace as jest.MockedFunction<typeof cleanupWorkspace>;
-
-describe('Media Processor Integration', () => {
-    const mockMediaStream = new Readable({ read() { this.push(Buffer.from('fake-media-data')); this.push(null); } });
-
-    const mockStorageClient = {
+describe('E2E: Convert Pipeline', () => {
+    const storageClient = {
         downloadObject: jest.fn(),
         uploadObject: jest.fn(),
         ensureBucket: jest.fn()
     } as unknown as StorageClient;
 
-    const config: ConvertConfig = {
+    const config = {
         vodBucketName: 'vod-bucket',
-        uploadingBatchSize: 5
+        uploadingBatchSize: 10
     };
 
-    const mockWorkPaths = {
-        workDirPath: '/tmp/test-video-abc',
-        mediaPath: '/tmp/test-video-abc/test-video.mp4',
-        mpdPath: '/tmp/test-video-abc/output.mpd'
-    };
-
-    beforeEach(() => {
-        (mockStorageClient.downloadObject as jest.Mock).mockResolvedValue(mockMediaStream);
-        mockedInitializeWorkspace.mockReturnValue(mockWorkPaths);
-        mockedWriteMedia.mockResolvedValue(undefined);
-        mockedGenerateSubtitles.mockResolvedValue(undefined);
-        mockedConvertMedia.mockResolvedValue(undefined);
-        mockedUploadStream.mockResolvedValue(undefined);
-        mockedCleanup.mockResolvedValue(undefined);
+    beforeAll(async () => {
+        await createTempFolder();
     });
 
-    describe('Full convert pipeline — video without subtitles', () => {
-        const payload: Convert = {
+    beforeEach(() => {
+        jest.clearAllMocks();
+
+        (storageClient.downloadObject as jest.Mock).mockResolvedValue(
+            Readable.from(Buffer.from('dud'))
+        );
+        // Destroy the ReadStream so the file handle is released before cleanup runs (Windows)
+        (storageClient.uploadObject as jest.Mock).mockImplementation((_bucket, _key, stream: any) => {
+            stream?.destroy();
+            return Promise.resolve();
+        });
+        (storageClient.ensureBucket as jest.Mock).mockResolvedValue(undefined);
+
+        mockedRunFfprobe.mockResolvedValue({ streams: [] } as any);
+
+        // Simulate DASH output: create fake files so the upload step has real files to collect
+        mockedRunFfmpeg.mockImplementation(async (_input, outputPath) => {
+            if (outputPath.endsWith('.mpd')) {
+                const dir = path.dirname(outputPath);
+                await fs.promises.writeFile(outputPath, '<MPD/>');
+                await fs.promises.writeFile(path.join(dir, 'init_0.m4s'), Buffer.alloc(0));
+                await fs.promises.writeFile(path.join(dir, 'seg_0_001.m4s'), Buffer.alloc(0));
+            } else if (outputPath.endsWith('.vtt')) {
+                await fs.promises.writeFile(outputPath, 'WEBVTT\n');
+            }
+        });
+    });
+
+    describe('Video without subtitles', () => {
+        const payload = {
             mediaName: 'test-video.mp4',
             mediaStorageBucket: 'raw-media',
             mediaRoutingKey: 'uploads/test-video.mp4',
             areSubtitlesIncluded: false
         };
 
-        it('should validate the convert payload', () => {
-            expect(validateConvertPayload(payload)).toBe(true);
-        });
-
-        it('should process full pipeline: download → write → convert → upload → cleanup', async () => {
-            const handler = convertMediaHandler(mockStorageClient, config);
+        it('calls FFmpeg with the correct DASH output options', async () => {
+            const handler = convertMediaHandler(storageClient, config);
             await handler(payload);
 
-            expect(mockStorageClient.downloadObject).toHaveBeenCalledWith('raw-media', 'uploads/test-video.mp4');
-            expect(mockedInitializeWorkspace).toHaveBeenCalledWith('test-video.mp4');
-            expect(mockedWriteMedia).toHaveBeenCalledWith(mockMediaStream, mockWorkPaths.mediaPath);
-            expect(mockedGenerateSubtitles).not.toHaveBeenCalled();
-            expect(mockedConvertMedia).toHaveBeenCalledWith(mockWorkPaths.mediaPath, mockWorkPaths.mpdPath);
-            expect(mockedUploadStream).toHaveBeenCalledWith(mockStorageClient, 'test-video.mp4', mockWorkPaths.workDirPath, config);
-            expect(mockedCleanup).toHaveBeenCalledWith(mockWorkPaths.workDirPath);
+            expect(mockedRunFfmpeg).toHaveBeenCalledWith(
+                expect.stringContaining('test-video.mp4'),
+                expect.stringContaining('output.mpd'),
+                [
+                    '-f dash',
+                    '-map 0:v',
+                    '-map 0:a?',
+                    '-c:v copy',
+                    '-c:a copy',
+                    '-use_template', '1',
+                    '-use_timeline', '1',
+                    '-seg_duration', '15',
+                    '-init_seg_name', 'init_$RepresentationID$.m4s',
+                    '-media_seg_name', 'seg_$RepresentationID$_$Number%03d$.m4s'
+                ],
+                true
+            );
+        });
+
+        it('uploads all output files to the VOD bucket under the correct key prefix', async () => {
+            const handler = convertMediaHandler(storageClient, config);
+            await handler(payload);
+
+            expect(storageClient.ensureBucket).toHaveBeenCalledWith('vod-bucket');
+
+            const uploadCalls = (storageClient.uploadObject as jest.Mock).mock.calls as [string, string, unknown][];
+            const uploadedKeys = uploadCalls.map(([, key]) => key);
+
+            expect(uploadedKeys.some(k => k.endsWith('output.mpd'))).toBe(true);
+            expect(uploadedKeys.some(k => k.endsWith('.m4s'))).toBe(true);
+            uploadedKeys.forEach(key => expect(key.startsWith('test-video/')).toBe(true));
+        });
+
+        it('cleans up workspace after successful conversion', async () => {
+            const workspaceSpy = jest.spyOn(convertUtils, 'initializeWorkspace');
+
+            const handler = convertMediaHandler(storageClient, config);
+            await handler(payload);
+
+            const { workDirPath } = workspaceSpy.mock.results[0].value;
+            expect(fs.existsSync(workDirPath)).toBe(false);
+        });
+
+        it('cleans up workspace even when an upload fails', async () => {
+            const workspaceSpy = jest.spyOn(convertUtils, 'initializeWorkspace');
+            (storageClient.uploadObject as jest.Mock).mockImplementation((_bucket, _key, stream: any) => {
+                stream?.destroy();
+                return Promise.reject(new Error('Upload failed'));
+            });
+
+            const handler = convertMediaHandler(storageClient, config);
+            await expect(handler(payload)).rejects.toThrow('Upload failed');
+
+            const { workDirPath } = workspaceSpy.mock.results[0].value;
+            expect(fs.existsSync(workDirPath)).toBe(false);
         });
     });
 
-    describe('Full convert pipeline — video with subtitles', () => {
-        const payload: Convert = {
+    describe('Video with subtitles', () => {
+        const payload = {
             mediaName: 'lecture.mkv',
             mediaStorageBucket: 'raw-media',
             mediaRoutingKey: 'uploads/lecture.mkv',
             areSubtitlesIncluded: true
         };
 
-        it('should generate subtitle tracks before conversion', async () => {
-            mockedInitializeWorkspace.mockReturnValue({
-                workDirPath: '/tmp/lecture-abc',
-                mediaPath: '/tmp/lecture-abc/lecture.mkv',
-                mpdPath: '/tmp/lecture-abc/output.mpd'
-            });
+        beforeEach(() => {
+            mockedRunFfprobe.mockResolvedValue({
+                streams: [
+                    { codec_type: 'subtitle', index: 2, tags: { language: 'eng' } },
+                    { codec_type: 'subtitle', index: 3, tags: { language: 'fra' } }
+                ]
+            } as any);
+        });
 
-            const handler = convertMediaHandler(mockStorageClient, config);
+        it('probes the media file and extracts each subtitle stream as WebVTT', async () => {
+            const handler = convertMediaHandler(storageClient, config);
             await handler(payload);
 
-            expect(mockedGenerateSubtitles).toHaveBeenCalledWith('/tmp/lecture-abc', '/tmp/lecture-abc/lecture.mkv');
-            expect(mockedConvertMedia).toHaveBeenCalledWith('/tmp/lecture-abc/lecture.mkv', '/tmp/lecture-abc/output.mpd');
-            expect(mockedUploadStream).toHaveBeenCalled();
-            expect(mockedCleanup).toHaveBeenCalledWith('/tmp/lecture-abc');
-        });
-    });
+            expect(mockedRunFfprobe).toHaveBeenCalledWith(expect.stringContaining('lecture.mkv'));
 
-    describe('Error handling — storage download failure', () => {
-        it('should propagate errors and not proceed with conversion', async () => {
-            (mockStorageClient.downloadObject as jest.Mock).mockRejectedValue(new Error('Storage connection refused'));
-
-            const handler = convertMediaHandler(mockStorageClient, config);
-            await expect(handler({
-                mediaName: 'video.mp4',
-                mediaStorageBucket: 'raw-media',
-                mediaRoutingKey: 'uploads/video.mp4',
-                areSubtitlesIncluded: false
-            })).rejects.toThrow('Storage connection refused');
-
-            expect(mockedWriteMedia).not.toHaveBeenCalled();
-            expect(mockedConvertMedia).not.toHaveBeenCalled();
-            expect(mockedUploadStream).not.toHaveBeenCalled();
-        });
-    });
-
-    describe('Error handling — conversion failure with cleanup', () => {
-        it('should cleanup workspace even when conversion throws', async () => {
-            mockedConvertMedia.mockRejectedValue(new Error('FFmpeg process crashed'));
-
-            const handler = convertMediaHandler(mockStorageClient, config);
-            await expect(handler({
-                mediaName: 'broken.mp4',
-                mediaStorageBucket: 'raw-media',
-                mediaRoutingKey: 'uploads/broken.mp4',
-                areSubtitlesIncluded: false
-            })).rejects.toThrow('FFmpeg process crashed');
-
-            expect(mockedCleanup).toHaveBeenCalledWith(mockWorkPaths.workDirPath);
-        });
-    });
-
-    describe('Payload validation edge cases in pipeline', () => {
-        it('should reject invalid payload before processing', () => {
-            const invalidPayload = { mediaName: 123 };
-            expect(validateConvertPayload(invalidPayload)).toBe(false);
+            const vttCalls = mockedRunFfmpeg.mock.calls.filter(([, out]) => out.endsWith('.vtt'));
+            expect(vttCalls).toHaveLength(2);
+            expect(vttCalls[0][2]).toEqual(['-map', '0:2', '-c:s', 'webvtt']);
+            expect(vttCalls[1][2]).toEqual(['-map', '0:3', '-c:s', 'webvtt']);
         });
 
-        it('should accept payload with areSubtitlesIncluded omitted and default to false', () => {
-            const partialPayload = {
-                mediaName: 'video.mp4',
-                mediaStorageBucket: 'raw-media',
-                mediaRoutingKey: 'uploads/video.mp4'
-            };
-            expect(validateConvertPayload(partialPayload)).toBe(true);
-        });
-    });
+        it('uploads VTT files alongside DASH segments', async () => {
+            const handler = convertMediaHandler(storageClient, config);
+            await handler(payload);
 
-    describe('Consumer binding configuration', () => {
-        it('should use correct exchange and topic from binding constants', () => {
-            expect(CONVERT_MEDIA_CONSUMER_EXCHANGE).toBe('convert');
-            expect(CONVERT_MEDIA_CONSUMER_TOPIC).toBe('convert.media');
+            const uploadCalls = (storageClient.uploadObject as jest.Mock).mock.calls as [string, string, unknown][];
+            const uploadedKeys = uploadCalls.map(([, key]) => key);
+
+            expect(uploadedKeys.some(k => k.endsWith('subtitles_0_eng.vtt'))).toBe(true);
+            expect(uploadedKeys.some(k => k.endsWith('subtitles_1_fra.vtt'))).toBe(true);
         });
     });
 });
