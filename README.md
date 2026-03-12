@@ -112,14 +112,14 @@ Payload schema:
 
 ```json
 {
+  "mediaId": "string (MongoDB ObjectId)",
   "mediaName": "string",
   "mediaStorageBucket": "string",
-  "mediaRoutingKey": "string",
-  "areSubtitlesIncluded": "boolean (optional, default false)"
+  "mediaRoutingKey": "string"
 }
 ```
 
-The handler downloads the media from storage, optionally extracts subtitle tracks, converts the media to a DASH stream via FFmpeg, uploads the output files to the VOD bucket, and cleans up the temporary workspace.
+The handler downloads the media from storage, probes it with FFprobe to extract metadata (video/audio/subtitle streams, chapters, duration), converts to DASH via FFmpeg (with any detected ASS subtitle tracks extracted as WebVTT), uploads the output files to the VOD bucket, and cleans up the temporary workspace.
 
 ## Testing
 

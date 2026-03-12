@@ -2,24 +2,24 @@ import { validateConvertPayload } from '../types';
 
 describe('validateConvertPayload', () => {
     const validPayload = {
+        mediaId: '507f1f77bcf86cd799439011',
         mediaName: 'video.mp4',
         mediaStorageBucket: 'raw-bucket',
-        mediaRoutingKey: 'media/video.mp4',
-        areSubtitlesIncluded: true
+        mediaRoutingKey: 'media/video.mp4'
     };
 
     it('should return true for a valid payload', () => {
         expect(validateConvertPayload(validPayload)).toBe(true);
     });
 
-    it('should default areSubtitlesIncluded to false when not provided', () => {
-        const { areSubtitlesIncluded: _, ...payloadWithoutSubtitles } = validPayload;
-        expect(validateConvertPayload(payloadWithoutSubtitles)).toBe(true);
+    it('should return false when mediaId is missing', () => {
+        const { mediaId: _, ...payload } = validPayload;
+        expect(validateConvertPayload(payload)).toBe(false);
     });
 
-    it('should coerce areSubtitlesIncluded from string', () => {
-        const payload = { ...validPayload, areSubtitlesIncluded: 'true' };
-        expect(validateConvertPayload(payload)).toBe(true);
+    it('should return false when mediaId is not a valid ObjectId', () => {
+        const payload = { ...validPayload, mediaId: 'not-an-object-id' };
+        expect(validateConvertPayload(payload)).toBe(false);
     });
 
     it('should return false when mediaName is missing', () => {

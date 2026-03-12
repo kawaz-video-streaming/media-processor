@@ -1,13 +1,24 @@
-import ffmpeg, { ffprobe, FfprobeData } from 'fluent-ffmpeg';
+import ffmpeg, { FfprobeData } from 'fluent-ffmpeg';
+import { execFile } from 'child_process';
 import { isNotNil } from 'ramda';
 import { Readable } from 'stream';
 
 export const runFfprobe = (inputPath: string) =>
-    new Promise<FfprobeData>((resolve, reject) => ffprobe(inputPath, (err, data) => err ? reject(err) : resolve(data)));
+    new Promise<FfprobeData>((resolve, reject) =>
+        execFile('ffprobe', [
+            '-v', 'quiet',
+            '-print_format', 'json',
+            '-show_format',
+            '-show_streams',
+            '-show_chapters',
+            inputPath
+        ], (err, stdout) => err ? reject(err) : resolve(JSON.parse(stdout) as FfprobeData)));
 
-export const runFfmpeg = (inputSource: string | Readable, outputPath: string, outputOptions: string[] = [], logProgress: boolean = false) =>
-    new Promise<void>((resolve, reject) =>
-        ffmpeg(inputSource)
+export const runFfmpeg = (inputSources: (string | Readable)[], outputPath: string, outputOptions: string[] = [], logProgress: boolean = false) =>
+    new Promise<void>((resolve, reject) => {
+        const command = ffmpeg();
+        inputSources.map(source => command.addInput(source));
+        command
             .outputOptions(outputOptions)
             .output(outputPath)
             .on('progress', progress => {
@@ -23,4 +34,4 @@ export const runFfmpeg = (inputSource: string | Readable, outputPath: string, ou
             })
             .on('end', () => resolve())
             .run()
-    );
+    });

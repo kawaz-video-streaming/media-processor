@@ -41,7 +41,13 @@ describe('E2E: Convert Pipeline', () => {
         });
         (storageClient.ensureBucket as jest.Mock).mockResolvedValue(undefined);
 
-        mockedRunFfprobe.mockResolvedValue({ streams: [] } as any);
+        mockedRunFfprobe.mockResolvedValue({
+            format: { tags: {}, duration: 120 },
+            chapters: [],
+            streams: [
+                { codec_type: 'video', tags: { DURATION: '00:02:00.000000000' } }
+            ]
+        } as any);
 
         // Simulate DASH output: create fake files so the upload step has real files to collect
         mockedRunFfmpeg.mockImplementation(async (_input, outputPath) => {
@@ -56,12 +62,36 @@ describe('E2E: Convert Pipeline', () => {
         });
     });
 
+    describe('Non-video media', () => {
+        const payload = {
+            mediaId: '507f1f77bcf86cd799439011',
+            mediaName: 'audio-only.mp3',
+            mediaStorageBucket: 'raw-media',
+            mediaRoutingKey: 'uploads/audio-only.mp3'
+        };
+
+        it('rejects the file and cleans up the workspace when no video stream is found', async () => {
+            const workspaceSpy = jest.spyOn(convertUtils, 'initializeWorkspace');
+            mockedRunFfprobe.mockResolvedValue({
+                format: { tags: {}, duration: 180 },
+                chapters: [],
+                streams: [{ codec_type: 'audio', tags: {} }]
+            } as any);
+
+            const handler = convertMediaHandler(storageClient, config);
+            await expect(handler(payload)).rejects.toThrow('No video stream found in media');
+
+            const { workDirPath } = workspaceSpy.mock.results[0].value;
+            expect(fs.existsSync(workDirPath)).toBe(false);
+        });
+    });
+
     describe('Video without subtitles', () => {
         const payload = {
+            mediaId: '507f1f77bcf86cd799439011',
             mediaName: 'test-video.mp4',
             mediaStorageBucket: 'raw-media',
-            mediaRoutingKey: 'uploads/test-video.mp4',
-            areSubtitlesIncluded: false
+            mediaRoutingKey: 'uploads/test-video.mp4'
         };
 
         it('calls FFmpeg with the correct DASH output options', async () => {
@@ -69,7 +99,7 @@ describe('E2E: Convert Pipeline', () => {
             await handler(payload);
 
             expect(mockedRunFfmpeg).toHaveBeenCalledWith(
-                expect.stringContaining('test-video.mp4'),
+                expect.arrayContaining([expect.stringContaining('test-video.mp4')]),
                 expect.stringContaining('output.mpd'),
                 [
                     '-f dash',
@@ -128,17 +158,20 @@ describe('E2E: Convert Pipeline', () => {
 
     describe('Video with subtitles', () => {
         const payload = {
+            mediaId: '507f1f77bcf86cd799439011',
             mediaName: 'lecture.mkv',
             mediaStorageBucket: 'raw-media',
-            mediaRoutingKey: 'uploads/lecture.mkv',
-            areSubtitlesIncluded: true
+            mediaRoutingKey: 'uploads/lecture.mkv'
         };
 
         beforeEach(() => {
             mockedRunFfprobe.mockResolvedValue({
+                format: { tags: {}, duration: 120 },
+                chapters: [],
                 streams: [
-                    { codec_type: 'subtitle', index: 2, tags: { language: 'eng' } },
-                    { codec_type: 'subtitle', index: 3, tags: { language: 'fra' } }
+                    { codec_type: 'video', tags: { DURATION: '00:02:00.000000000' } },
+                    { codec_type: 'subtitle', codec_name: 'ass', index: 2, tags: { language: 'eng' } },
+                    { codec_type: 'subtitle', codec_name: 'ass', index: 3, tags: { language: 'fra' } }
                 ]
             } as any);
         });
@@ -151,19 +184,19 @@ describe('E2E: Convert Pipeline', () => {
 
             const vttCalls = mockedRunFfmpeg.mock.calls.filter(([, out]) => out.endsWith('.vtt'));
             expect(vttCalls).toHaveLength(2);
-            expect(vttCalls[0][2]).toEqual(['-map', '0:2', '-c:s', 'webvtt']);
-            expect(vttCalls[1][2]).toEqual(['-map', '0:3', '-c:s', 'webvtt']);
+            expect(vttCalls[0][2]).toEqual(['-map', '0:0', '-c:s', 'webvtt']);
+            expect(vttCalls[1][2]).toEqual(['-map', '0:1', '-c:s', 'webvtt']);
         });
 
-        it('uploads VTT files alongside DASH segments', async () => {
+        it('passes subtitle VTT files as inputs to the DASH conversion', async () => {
             const handler = convertMediaHandler(storageClient, config);
             await handler(payload);
 
-            const uploadCalls = (storageClient.uploadObject as jest.Mock).mock.calls as [string, string, unknown][];
-            const uploadedKeys = uploadCalls.map(([, key]) => key);
-
-            expect(uploadedKeys.some(k => k.endsWith('subtitles_0_eng.vtt'))).toBe(true);
-            expect(uploadedKeys.some(k => k.endsWith('subtitles_1_fra.vtt'))).toBe(true);
+            const dashCall = mockedRunFfmpeg.mock.calls.find(([, out]) => out.endsWith('.mpd'));
+            expect(dashCall![0]).toEqual(expect.arrayContaining([
+                expect.stringContaining('subtitles_0_eng.vtt'),
+                expect.stringContaining('subtitles_1_fra.vtt')
+            ]));
         });
     });
 });

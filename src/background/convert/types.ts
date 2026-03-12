@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { validateSchema } from "../../utils/zod";
+import { Types } from '@ido_kawaz/mongo-client';
 
 export interface WorkPaths {
     workDirPath: string;
@@ -7,11 +8,43 @@ export interface WorkPaths {
     mpdPath: string;
 }
 
+export interface VideoChapter {
+    chapterName: string;
+    chapterStartTime: number;
+    chapterEndTime: number;
+}
+
+export interface VideoStream {
+    videoName: string;
+    videoDuration: number;
+}
+
+export interface AudioStream {
+    audioName: string;
+    audioDuration: number;
+}
+
+export interface SubtitleStream {
+    subtitleIndex: number;
+    subtitleName: string;
+    subtitleDuration: number;
+}
+
+export interface Video {
+    videoId: string;
+    videoName: string;
+    videoDuration: number;
+    videoChapters: VideoChapter[];
+    videoStreams: VideoStream[];
+    audioStreams: AudioStream[];
+    subtitleStreams: SubtitleStream[];
+}
+
 export interface Convert {
+    mediaId: string;
     mediaName: string;
     mediaStorageBucket: string;
     mediaRoutingKey: string;
-    areSubtitlesIncluded: boolean;
 }
 
 export interface ConvertConfig {
@@ -20,10 +53,12 @@ export interface ConvertConfig {
 }
 
 const convertSchema = z.object({
+    mediaId: z.string().refine((value) => Types.ObjectId.isValid(value), {
+        message: "Invalid mediaId format. Expected a valid ObjectId string."
+    }),
     mediaName: z.string(),
     mediaStorageBucket: z.string(),
-    mediaRoutingKey: z.string(),
-    areSubtitlesIncluded: z.coerce.boolean().default(false)
+    mediaRoutingKey: z.string()
 })
 
 export const validateConvertPayload = validateSchema<Convert>(convertSchema);   

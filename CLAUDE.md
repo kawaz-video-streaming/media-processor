@@ -44,16 +44,17 @@ This is a headless async media processing service. The HTTP server exists only f
 
 **Media conversion pipeline** (`src/background/convert/`):
 1. Receive AMQP message on queue `media-processor-convert` (exchange: `convert`, topic: `convert.media`)
-2. Validate payload with Zod — `mediaName`, `mediaStorageBucket`, `mediaRoutingKey`, `areSubtitlesIncluded` (defaults to `false`)
+2. Validate payload with Zod — `mediaId` (MongoDB ObjectId), `mediaName`, `mediaStorageBucket`, `mediaRoutingKey`
 3. Download source media from S3 via `storageClient.downloadObject` (in `handler.ts`)
 4. Create isolated `tmp/<mediaName>-<random>/` workspace; write media stream to disk
-5. If `areSubtitlesIncluded`: use FFprobe to detect subtitle streams, extract each as `.vtt` with FFmpeg
-6. Convert to MPEG-DASH with FFmpeg (`-f dash`, 15s segments, copies video/audio streams without re-encoding); source file deleted from workspace after conversion
-7. Upload all workspace files to VOD S3 bucket under `<mediaName-no-ext>/` key prefix, in batches of `UPLOADING_BATCH_SIZE`
-8. `finally`: delete workspace directory regardless of success or failure
+5. Probe media with FFprobe (`getVideoMetadata`) to extract video/audio/subtitle streams, chapters, and duration; throws `NonVideoMediaError` if no video stream found
+6. Extract any detected ASS subtitle streams as `.vtt` files with FFmpeg
+7. Convert to MPEG-DASH with FFmpeg (`-f dash`, 15s segments, copies video/audio streams without re-encoding); source file and subtitle inputs deleted from workspace after conversion
+8. Upload all workspace files to VOD S3 bucket under `<mediaName-no-ext>/` key prefix, in batches of `UPLOADING_BATCH_SIZE`
+9. `finally`: delete workspace directory regardless of success or failure
 
 **Key directories:**
-- `src/background/convert/` — entire conversion consumer: `handler.ts` orchestrates, `utils.ts` implements each step, `types.ts` has Zod schema + interfaces, `binding.ts` has AMQP queue/exchange/topic constants
+- `src/background/convert/` — entire conversion consumer: `handler.ts` orchestrates, `utils.ts` implements each step, `types.ts` has Zod schema + interfaces, `errors.ts` has domain errors, `binding.ts` has AMQP queue/exchange/topic constants
 - `src/utils/` — shared: `ffmpeg.ts` (FFmpeg/FFprobe promise wrappers), `files.ts` (recursive file collection, temp folder creation, path formatting), `batches.ts` (batch processor with progress logging), `zod.ts` (validation helper)
 - `src/services/` — `system.ts` bootstraps everything; `db.ts` inits MongoDB
 - `src/dal/` — DAL stubs, currently empty (TODO)
