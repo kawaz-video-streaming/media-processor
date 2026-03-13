@@ -1,16 +1,11 @@
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
 import { NonVideoMediaError } from '../errors';
-import { SubtitleStream } from '../types';
-import { addSubtitlesToMpd, generateSubtitleTracks, getVideoChapters, getVideoMetadata } from '../utils';
+import { getVideoChapters, getVideoMetadata } from '../utils';
 
 jest.mock('../../../utils/ffmpeg');
 
 import * as ffmpegUtils from '../../../utils/ffmpeg';
 
 const mockedRunFfprobe = ffmpegUtils.runFfprobe as jest.MockedFunction<typeof ffmpegUtils.runFfprobe>;
-const mockedRunFfmpeg = ffmpegUtils.runFfmpeg as jest.MockedFunction<typeof ffmpegUtils.runFfmpeg>;
 
 const MEDIA_ID = '507f1f77bcf86cd799439011';
 const MEDIA_PATH = '/tmp/workspace/video.mp4';
@@ -205,108 +200,4 @@ describe('getVideoMetadata', () => {
     });
 });
 
-describe('generateSubtitleTracks', () => {
-    const WORK_DIR = '/tmp/workspace';
 
-    const subtitleStreams: SubtitleStream[] = [
-        { subtitleIndex: 5, subtitleLanguage: 'eng', subtitleName: 'eng', subtitleDuration: 0 },
-        { subtitleIndex: 8, subtitleLanguage: 'fra', subtitleName: 'fra', subtitleDuration: 0 }
-    ];
-
-    beforeEach(() => {
-        mockedRunFfmpeg.mockResolvedValue(undefined);
-    });
-
-    it('calls runFfmpeg once per subtitle stream', async () => {
-        await generateSubtitleTracks(subtitleStreams, WORK_DIR, MEDIA_PATH);
-        expect(mockedRunFfmpeg).toHaveBeenCalledTimes(2);
-    });
-
-    it('passes correct ffmpeg options for each stream index', async () => {
-        await generateSubtitleTracks(subtitleStreams, WORK_DIR, MEDIA_PATH);
-
-        expect(mockedRunFfmpeg).toHaveBeenNthCalledWith(
-            1,
-            MEDIA_PATH,
-            expect.stringContaining('subtitles_0_eng.vtt'),
-            ['-map', '0:5', '-c:s', 'webvtt']
-        );
-        expect(mockedRunFfmpeg).toHaveBeenNthCalledWith(
-            2,
-            MEDIA_PATH,
-            expect.stringContaining('subtitles_1_fra.vtt'),
-            ['-map', '0:8', '-c:s', 'webvtt']
-        );
-    });
-
-    it('returns the generated subtitle file paths', async () => {
-        const paths = await generateSubtitleTracks(subtitleStreams, WORK_DIR, MEDIA_PATH);
-
-        expect(paths).toHaveLength(2);
-        expect(paths[0]).toContain('subtitles_0_eng.vtt');
-        expect(paths[1]).toContain('subtitles_1_fra.vtt');
-    });
-
-    it('returns an empty array when there are no subtitle streams', async () => {
-        const paths = await generateSubtitleTracks([], WORK_DIR, MEDIA_PATH);
-        expect(paths).toEqual([]);
-        expect(mockedRunFfmpeg).not.toHaveBeenCalled();
-    });
-});
-
-describe('addSubtitlesToMpd', () => {
-    let tmpDir: string;
-    let mpdPath: string;
-
-    const subtitleStreams: SubtitleStream[] = [
-        { subtitleIndex: 5, subtitleLanguage: 'eng', subtitleName: 'eng', subtitleDuration: 0 },
-        { subtitleIndex: 8, subtitleLanguage: 'fra', subtitleName: 'fra', subtitleDuration: 0 }
-    ];
-
-    beforeEach(async () => {
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mpd-test-'));
-        mpdPath = path.join(tmpDir, 'output.mpd');
-        await fs.promises.writeFile(mpdPath,
-            '<MPD>\n\t<Period id="0">\n\t\t<AdaptationSet id="0" contentType="video"/>\n\t</Period>\n</MPD>');
-    });
-
-    afterEach(async () => {
-        await fs.promises.rm(tmpDir, { recursive: true, force: true });
-    });
-
-    it('injects subtitle AdaptationSet entries before </Period>', async () => {
-        const subtitlePaths = [
-            path.join(tmpDir, 'subtitles_0_eng.vtt'),
-            path.join(tmpDir, 'subtitles_1_fra.vtt')
-        ];
-
-        await addSubtitlesToMpd(mpdPath, subtitlePaths, subtitleStreams);
-
-        const content = await fs.promises.readFile(mpdPath, 'utf-8');
-        expect(content).toContain('mimeType="text/vtt"');
-        expect(content).toContain('lang="eng"');
-        expect(content).toContain('lang="fra"');
-        expect(content).toContain('subtitles_0_eng.vtt');
-        expect(content).toContain('subtitles_1_fra.vtt');
-        expect(content.indexOf('subtitles_0_eng.vtt')).toBeLessThan(content.indexOf('</Period>'));
-    });
-
-    it('assigns ids higher than the highest existing AdaptationSet id', async () => {
-        const subtitlePaths = [path.join(tmpDir, 'subtitles_0_eng.vtt')];
-
-        await addSubtitlesToMpd(mpdPath, subtitlePaths, [subtitleStreams[0]]);
-
-        const content = await fs.promises.readFile(mpdPath, 'utf-8');
-        const allIds = [...content.matchAll(/id="(\d+)"/g)].map(m => parseInt(m[1]));
-        expect(Math.max(...allIds)).toBe(1);
-    });
-
-    it('does nothing when subtitlePaths is empty', async () => {
-        const original = await fs.promises.readFile(mpdPath, 'utf-8');
-
-        await addSubtitlesToMpd(mpdPath, [], []);
-
-        const after = await fs.promises.readFile(mpdPath, 'utf-8');
-        expect(after).toBe(original);
-    });
-});

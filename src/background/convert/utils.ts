@@ -2,7 +2,7 @@ import { StorageClient } from '@ido_kawaz/storage-client';
 import { FfprobeData, FfprobeStream } from 'fluent-ffmpeg';
 import fs from 'fs';
 import path from 'path';
-import { isEmpty } from 'ramda';
+import { isEmpty, isNotEmpty } from 'ramda';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { RunInBatches } from '../../utils/batches';
@@ -23,16 +23,8 @@ export const initializeWorkspace = (mediaName: string): WorkPaths => {
 export const cleanupWorkspace = (workDirPath: string) =>
     fs.promises.rm(workDirPath, { recursive: true, force: true });
 
-export const createSubtitlePath = (workDirPath: string, index: number, language: string) =>
-    formatPath(path.resolve(workDirPath, `subtitles_${index}_${language}.vtt`));
-
 export const writeMediaToDirectory = (mediaStream: Readable, mediaPath: string) =>
     pipeline(mediaStream, fs.createWriteStream(mediaPath));
-
-const createSubtitleFileToWebVttOutputOptions = (subtitleStreamIndex: number) => [
-    '-map', `0:${subtitleStreamIndex}`,
-    '-c:s', 'webvtt'
-]
 
 const formatDurationInMs = (duration: any) => {
     if (typeof duration !== 'string') {
@@ -71,13 +63,6 @@ const getSubtitleStreams = (mediaStreams: FfprobeStream[]): SubtitleStream[] =>
             subtitleDuration: formatDurationInMs(stream.tags.DURATION) ?? 0
         }));
 
-export const generateSubtitleTracks = (subtitleStreams: SubtitleStream[], workDirPath: string, mediaPath: string): Promise<string[]> =>
-    Promise.all(subtitleStreams.map(async (stream, index) => {
-        const subtitlePath = createSubtitlePath(workDirPath, index, stream.subtitleName);
-        await runFfmpeg(mediaPath, subtitlePath, createSubtitleFileToWebVttOutputOptions(stream.subtitleIndex));
-        return subtitlePath;
-    }));
-
 export const getVideoChapters = (mediaData: FfprobeData): VideoChapter[] => mediaData.chapters.map(chapter => ({
     chapterName: chapter.tags?.title as string ?? 'Chapter',
     chapterStartTime: chapter.start_time ?? 0,
@@ -106,36 +91,26 @@ export const getVideoMetadata = async (mediaId: string, mediaPath: string): Prom
 }
 
 
-export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string) => {
+export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string, subtitleStreams: SubtitleStream[]) => {
+    const subtitleOptions = subtitleStreams.flatMap((stream) => ['-map', `0:${stream.subtitleIndex}`]);
+    const subtitleCodecOptions = isNotEmpty(subtitleStreams) ? ['-c:s mov_text'] : [];
     await runFfmpeg(mediaPath, mpdPath, [
         '-f dash',
         '-map 0:v',
         '-map 0:a?',
+        ...subtitleOptions,
         '-c:v copy',
         '-c:a copy',
+        ...subtitleCodecOptions,
         '-use_template', '1',
         '-use_timeline', '1',
         '-seg_duration', '15',
-        '-init_seg_name', 'init_$RepresentationID$.m4s',
-        '-media_seg_name', 'seg_$RepresentationID$_$Number%03d$.m4s'
+        '-init_seg_name', 'init_v$RepresentationID%02d$.m4s',
+        '-media_seg_name', 'seg_v$RepresentationID%02d$_$Number%03d$.m4s'
     ], true);
     await fs.promises.unlink(mediaPath);
 }
 
-export const addSubtitlesToMpd = async (mpdPath: string, subtitlePaths: string[], subtitleStreams: SubtitleStream[]) => {
-    if (subtitlePaths.length === 0) return;
-    const mpdContent = await fs.promises.readFile(mpdPath, 'utf-8');
-    const idMatches = [...mpdContent.matchAll(/id="(\d+)"/g)];
-    const maxId = idMatches.reduce((max, match) => Math.max(max, parseInt(match[1])), -1);
-    const subtitleSets = subtitlePaths.map((subtitlePath, index) => {
-        const id = maxId + 1 + index;
-        const { subtitleLanguage } = subtitleStreams[index];
-        const fileName = path.basename(subtitlePath);
-        return `\t\t<AdaptationSet id="${id}" contentType="text" mimeType="text/vtt" lang="${subtitleLanguage}">\n\t\t\t<Representation id="${id}" mimeType="text/vtt">\n\t\t\t\t<BaseURL>${fileName}</BaseURL>\n\t\t\t</Representation>\n\t\t</AdaptationSet>`;
-    }).join('\n');
-    const modified = mpdContent.replace('\n\t</Period>', `\n${subtitleSets}\n\t</Period>`);
-    await fs.promises.writeFile(mpdPath, modified, 'utf-8');
-}
 
 const createUploadFileToStorage = (storageClient: StorageClient, workDirPath: string, mediaName: string, uploadBucket: string) => async (filePath: string) => {
     const relativePath = path.relative(workDirPath, filePath);
