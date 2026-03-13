@@ -35,7 +35,8 @@ const formatDurationInMs = (duration: any) => {
 }
 
 const getVideoStreams = (mediaStreams: FfprobeStream[], defaultVideoName: string, defaultVideoDuration: number): VideoStream[] => {
-    const videoStreams = mediaStreams.filter(({ codec_type }) => codec_type === 'video').map(stream => ({
+    const videoStreams = mediaStreams.filter(({ codec_type }) => codec_type === 'video').map((stream, index) => ({
+        videoIndex: stream.index ?? index,
         videoName: (stream.tags.title as string) ?? defaultVideoName,
         videoDuration: formatDurationInMs(stream.tags.DURATION) ?? defaultVideoDuration
     }));
@@ -48,7 +49,8 @@ const getVideoStreams = (mediaStreams: FfprobeStream[], defaultVideoName: string
 const getAudioStreams = (mediaStreams: FfprobeStream[], defaultAudioDuration: number): AudioStream[] =>
     mediaStreams
         .filter(({ codec_type }) => codec_type === 'audio')
-        .map(stream => ({
+        .map((stream, index) => ({
+            audioIndex: stream.index ?? index,
             audioName: `${stream.tags?.title ? `${stream.tags.title} - ` : ''}${stream.tags?.language ?? 'unknown language'}`,
             audioDuration: formatDurationInMs(stream.tags.DURATION) ?? defaultAudioDuration
         }));
@@ -91,9 +93,13 @@ export const getVideoMetadata = async (mediaId: string, mediaPath: string): Prom
 }
 
 
-export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string, subtitleStreams: SubtitleStream[]) => {
+export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string, video: Video) => {
+    const { videoStreams, audioStreams, subtitleStreams } = video;
     const subtitleOptions = subtitleStreams.flatMap((stream) => ['-map', `0:${stream.subtitleIndex}`]);
     const subtitleCodecOptions = isNotEmpty(subtitleStreams) ? ['-c:s mov_text'] : [];
+    const videoMetadataOptions = videoStreams.flatMap((stream) => [`-map_metadata:s:${stream.videoIndex}`, `0:s:${stream.videoIndex}`]);
+    const audioMetadataOptions = audioStreams.flatMap((stream) => [`-map_metadata:s:${stream.audioIndex}`, `0:s:${stream.audioIndex}`]);
+    const subtitleMetadataOptions = subtitleStreams.flatMap((stream) => [`-map_metadata:s:${stream.subtitleIndex}`, `0:s:${stream.subtitleIndex}`]);
     await runFfmpeg(mediaPath, mpdPath, [
         '-f dash',
         '-map 0:v',
@@ -102,11 +108,14 @@ export const convertMediaToDashStream = async (mediaPath: string, mpdPath: strin
         '-c:v copy',
         '-c:a copy',
         ...subtitleCodecOptions,
+        ...videoMetadataOptions,
+        ...audioMetadataOptions,
+        ...subtitleMetadataOptions,
         '-use_template', '1',
         '-use_timeline', '1',
         '-seg_duration', '15',
-        '-init_seg_name', 'init_v$RepresentationID%02d$.m4s',
-        '-media_seg_name', 'seg_v$RepresentationID%02d$_$Number%03d$.m4s'
+        '-init_seg_name', 'init_v$RepresentationID$.m4s',
+        '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
     ], true);
     await fs.promises.unlink(mediaPath);
 }

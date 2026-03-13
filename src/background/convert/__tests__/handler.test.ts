@@ -109,7 +109,7 @@ describe('convertMediaHandler', () => {
         expect(mockedConvertMedia).toHaveBeenCalledWith(
             mockWorkPaths.mediaPath,
             mockWorkPaths.mpdPath,
-            [] // subtitle streams from mockVideo
+            mockVideo
         );
     });
 

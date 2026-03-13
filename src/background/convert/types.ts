@@ -15,11 +15,13 @@ export interface VideoChapter {
 }
 
 export interface VideoStream {
+    videoIndex: number;
     videoName: string;
     videoDuration: number;
 }
 
 export interface AudioStream {
+    audioIndex: number
     audioName: string;
     audioDuration: number;
 }

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:trac.ffmpeg.org)",
+      "WebFetch(domain:ffmpeg.org)",
+      "WebFetch(domain:manpages.debian.org)",
+      "Bash(ffmpeg -h full)",
+      "Bash(col -b)",
+      "Read(//g//**)",
+      "WebFetch(domain:manpages.org)"
+    ]
+  }
+}

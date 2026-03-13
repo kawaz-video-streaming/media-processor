@@ -9,7 +9,7 @@ export const convertMediaHandler = (storageClient: StorageClient, config: Conver
         try {
             await writeMediaToDirectory(mediaStream, mediaPath);
             const video = await getVideoMetadata(mediaId, mediaPath);
-            await convertMediaToDashStream(mediaPath, mpdPath, video.subtitleStreams);
+            await convertMediaToDashStream(mediaPath, mpdPath, video);
             await uploadStreamToStorage(storageClient, mediaName, workDirPath, config);
         } finally {
             await cleanupWorkspace(workDirPath);

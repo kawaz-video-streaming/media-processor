@@ -106,11 +106,12 @@ describe('E2E: Convert Pipeline', () => {
                     '-map 0:a?',
                     '-c:v copy',
                     '-c:a copy',
+                    '-map_metadata:s:0', '0:s:0',
                     '-use_template', '1',
                     '-use_timeline', '1',
                     '-seg_duration', '15',
-                    '-init_seg_name', 'init_v$RepresentationID%02d$.m4s',
-                    '-media_seg_name', 'seg_v$RepresentationID%02d$_$Number%03d$.m4s'
+                    '-init_seg_name', 'init_v$RepresentationID$.m4s',
+                    '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
                 ],
                 true
             );
@@ -189,11 +190,14 @@ describe('E2E: Convert Pipeline', () => {
                 '-c:v copy',
                 '-c:a copy',
                 '-c:s mov_text',
+                '-map_metadata:s:0', '0:s:0',
+                '-map_metadata:s:2', '0:s:2',
+                '-map_metadata:s:3', '0:s:3',
                 '-use_template', '1',
                 '-use_timeline', '1',
                 '-seg_duration', '15',
-                '-init_seg_name', 'init_v$RepresentationID%02d$.m4s',
-                '-media_seg_name', 'seg_v$RepresentationID%02d$_$Number%03d$.m4s'
+                '-init_seg_name', 'init_v$RepresentationID$.m4s',
+                '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
             ]);
         });
     });
