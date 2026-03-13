@@ -65,7 +65,8 @@ const getSubtitleStreams = (mediaStreams: FfprobeStream[]): SubtitleStream[] =>
     mediaStreams
         .filter(({ codec_type, codec_name }) => codec_type === 'subtitle' && codec_name === 'ass')
         .map((stream, index) => ({
-            subtitleIndex: index,
+            subtitleIndex: stream.index ?? index,
+            subtitleLanguage: stream.tags?.language ?? 'und',
             subtitleName: `${stream.tags?.title ? `${stream.tags.title} - ` : ''}${stream.tags?.language ?? 'unknown language'}`,
             subtitleDuration: formatDurationInMs(stream.tags.DURATION) ?? 0
         }));
@@ -73,7 +74,7 @@ const getSubtitleStreams = (mediaStreams: FfprobeStream[]): SubtitleStream[] =>
 export const generateSubtitleTracks = (subtitleStreams: SubtitleStream[], workDirPath: string, mediaPath: string): Promise<string[]> =>
     Promise.all(subtitleStreams.map(async (stream, index) => {
         const subtitlePath = createSubtitlePath(workDirPath, index, stream.subtitleName);
-        await runFfmpeg([mediaPath], subtitlePath, createSubtitleFileToWebVttOutputOptions(stream.subtitleIndex));
+        await runFfmpeg(mediaPath, subtitlePath, createSubtitleFileToWebVttOutputOptions(stream.subtitleIndex));
         return subtitlePath;
     }));
 
@@ -105,8 +106,8 @@ export const getVideoMetadata = async (mediaId: string, mediaPath: string): Prom
 }
 
 
-export const convertMediaToDashStream = async (mediaSources: (string | Readable)[], mpdPath: string) => {
-    await runFfmpeg(mediaSources, mpdPath, [
+export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string) => {
+    await runFfmpeg(mediaPath, mpdPath, [
         '-f dash',
         '-map 0:v',
         '-map 0:a?',
@@ -118,11 +119,22 @@ export const convertMediaToDashStream = async (mediaSources: (string | Readable)
         '-init_seg_name', 'init_$RepresentationID$.m4s',
         '-media_seg_name', 'seg_$RepresentationID$_$Number%03d$.m4s'
     ], true);
-    for (const mediaSource of mediaSources) {
-        if (typeof mediaSource === 'string') {
-            await fs.promises.unlink(mediaSource);
-        }
-    }
+    await fs.promises.unlink(mediaPath);
+}
+
+export const addSubtitlesToMpd = async (mpdPath: string, subtitlePaths: string[], subtitleStreams: SubtitleStream[]) => {
+    if (subtitlePaths.length === 0) return;
+    const mpdContent = await fs.promises.readFile(mpdPath, 'utf-8');
+    const idMatches = [...mpdContent.matchAll(/id="(\d+)"/g)];
+    const maxId = idMatches.reduce((max, match) => Math.max(max, parseInt(match[1])), -1);
+    const subtitleSets = subtitlePaths.map((subtitlePath, index) => {
+        const id = maxId + 1 + index;
+        const { subtitleLanguage } = subtitleStreams[index];
+        const fileName = path.basename(subtitlePath);
+        return `\t\t<AdaptationSet id="${id}" contentType="text" mimeType="text/vtt" lang="${subtitleLanguage}">\n\t\t\t<Representation id="${id}" mimeType="text/vtt">\n\t\t\t\t<BaseURL>${fileName}</BaseURL>\n\t\t\t</Representation>\n\t\t</AdaptationSet>`;
+    }).join('\n');
+    const modified = mpdContent.replace('\n\t</Period>', `\n${subtitleSets}\n\t</Period>`);
+    await fs.promises.writeFile(mpdPath, modified, 'utf-8');
 }
 
 const createUploadFileToStorage = (storageClient: StorageClient, workDirPath: string, mediaName: string, uploadBucket: string) => async (filePath: string) => {

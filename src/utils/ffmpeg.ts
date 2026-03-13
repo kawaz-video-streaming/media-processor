@@ -1,7 +1,6 @@
 import ffmpeg, { FfprobeData } from 'fluent-ffmpeg';
 import { execFile } from 'child_process';
 import { isNotNil } from 'ramda';
-import { Readable } from 'stream';
 
 export const runFfprobe = (inputPath: string) =>
     new Promise<FfprobeData>((resolve, reject) =>
@@ -14,11 +13,9 @@ export const runFfprobe = (inputPath: string) =>
             inputPath
         ], (err, stdout) => err ? reject(err) : resolve(JSON.parse(stdout) as FfprobeData)));
 
-export const runFfmpeg = (inputSources: (string | Readable)[], outputPath: string, outputOptions: string[] = [], logProgress: boolean = false) =>
-    new Promise<void>((resolve, reject) => {
-        const command = ffmpeg();
-        inputSources.map(source => command.addInput(source));
-        command
+export const runFfmpeg = (inputSource: string, outputPath: string, outputOptions: string[] = [], logProgress: boolean = false) =>
+    new Promise<void>((resolve, reject) =>
+        ffmpeg(inputSource)
             .outputOptions(outputOptions)
             .output(outputPath)
             .on('progress', progress => {
@@ -34,4 +31,4 @@ export const runFfmpeg = (inputSources: (string | Readable)[], outputPath: strin
             })
             .on('end', () => resolve())
             .run()
-    });
+    );

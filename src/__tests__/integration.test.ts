@@ -49,11 +49,12 @@ describe('E2E: Convert Pipeline', () => {
             ]
         } as any);
 
-        // Simulate DASH output: create fake files so the upload step has real files to collect
+        // Simulate FFmpeg output: create fake files so upload step has real files to collect
         mockedRunFfmpeg.mockImplementation(async (_input, outputPath) => {
             if (outputPath.endsWith('.mpd')) {
                 const dir = path.dirname(outputPath);
-                await fs.promises.writeFile(outputPath, '<MPD/>');
+                await fs.promises.writeFile(outputPath,
+                    '<MPD>\n\t<Period id="0">\n\t\t<AdaptationSet id="0" contentType="video"/>\n\t</Period>\n</MPD>');
                 await fs.promises.writeFile(path.join(dir, 'init_0.m4s'), Buffer.alloc(0));
                 await fs.promises.writeFile(path.join(dir, 'seg_0_001.m4s'), Buffer.alloc(0));
             } else if (outputPath.endsWith('.vtt')) {
@@ -99,7 +100,7 @@ describe('E2E: Convert Pipeline', () => {
             await handler(payload);
 
             expect(mockedRunFfmpeg).toHaveBeenCalledWith(
-                expect.arrayContaining([expect.stringContaining('test-video.mp4')]),
+                expect.stringContaining('test-video.mp4'),
                 expect.stringContaining('output.mpd'),
                 [
                     '-f dash',
@@ -176,27 +177,55 @@ describe('E2E: Convert Pipeline', () => {
             } as any);
         });
 
-        it('probes the media file and extracts each subtitle stream as WebVTT', async () => {
+        it('extracts each subtitle stream as a WebVTT file', async () => {
             const handler = convertMediaHandler(storageClient, config);
             await handler(payload);
 
-            expect(mockedRunFfprobe).toHaveBeenCalledWith(expect.stringContaining('lecture.mkv'));
-
             const vttCalls = mockedRunFfmpeg.mock.calls.filter(([, out]) => out.endsWith('.vtt'));
             expect(vttCalls).toHaveLength(2);
-            expect(vttCalls[0][2]).toEqual(['-map', '0:0', '-c:s', 'webvtt']);
-            expect(vttCalls[1][2]).toEqual(['-map', '0:1', '-c:s', 'webvtt']);
+            expect(vttCalls[0][2]).toEqual(['-map', '0:2', '-c:s', 'webvtt']);
+            expect(vttCalls[1][2]).toEqual(['-map', '0:3', '-c:s', 'webvtt']);
         });
 
-        it('passes subtitle VTT files as inputs to the DASH conversion', async () => {
+        it('converts to DASH without subtitle stream maps', async () => {
             const handler = convertMediaHandler(storageClient, config);
             await handler(payload);
 
             const dashCall = mockedRunFfmpeg.mock.calls.find(([, out]) => out.endsWith('.mpd'));
-            expect(dashCall![0]).toEqual(expect.arrayContaining([
-                expect.stringContaining('subtitles_0_eng.vtt'),
-                expect.stringContaining('subtitles_1_fra.vtt')
-            ]));
+            expect(dashCall![2]).toEqual([
+                '-f dash',
+                '-map 0:v',
+                '-map 0:a?',
+                '-c:v copy',
+                '-c:a copy',
+                '-use_template', '1',
+                '-use_timeline', '1',
+                '-seg_duration', '15',
+                '-init_seg_name', 'init_$RepresentationID$.m4s',
+                '-media_seg_name', 'seg_$RepresentationID$_$Number%03d$.m4s'
+            ]);
+        });
+
+        it('injects subtitle AdaptationSets into the MPD', async () => {
+            const addSubtitlesSpy = jest.spyOn(convertUtils, 'addSubtitlesToMpd');
+
+            const handler = convertMediaHandler(storageClient, config);
+            await handler(payload);
+
+            expect(addSubtitlesSpy).toHaveBeenCalled();
+            const [, subtitlePaths, subtitleStreams] = addSubtitlesSpy.mock.calls[0];
+            expect(subtitlePaths).toHaveLength(2);
+            expect(subtitleStreams[0].subtitleLanguage).toBe('eng');
+            expect(subtitleStreams[1].subtitleLanguage).toBe('fra');
+        });
+
+        it('uploads WebVTT files alongside DASH segments', async () => {
+            const handler = convertMediaHandler(storageClient, config);
+            await handler(payload);
+
+            const uploadCalls = (storageClient.uploadObject as jest.Mock).mock.calls as [string, string, unknown][];
+            const uploadedKeys = uploadCalls.map(([, key]) => key);
+            expect(uploadedKeys.some(k => k.endsWith('.vtt'))).toBe(true);
         });
     });
 });

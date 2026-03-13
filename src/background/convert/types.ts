@@ -26,6 +26,7 @@ export interface AudioStream {
 
 export interface SubtitleStream {
     subtitleIndex: number;
+    subtitleLanguage: string;
     subtitleName: string;
     subtitleDuration: number;
 }

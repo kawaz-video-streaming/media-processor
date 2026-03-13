@@ -1,6 +1,9 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { NonVideoMediaError } from '../errors';
 import { SubtitleStream } from '../types';
-import { generateSubtitleTracks, getVideoChapters, getVideoMetadata } from '../utils';
+import { addSubtitlesToMpd, generateSubtitleTracks, getVideoChapters, getVideoMetadata } from '../utils';
 
 jest.mock('../../../utils/ffmpeg');
 
@@ -125,9 +128,10 @@ describe('getVideoMetadata', () => {
         const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
         expect(video.subtitleStreams).toHaveLength(1);
         expect(video.subtitleStreams[0].subtitleName).toBe('eng');
+        expect(video.subtitleStreams[0].subtitleLanguage).toBe('eng');
     });
 
-    it('assigns subtitleIndex as map position, not stream index', async () => {
+    it('uses actual FFprobe stream index for subtitleIndex', async () => {
         mockedRunFfprobe.mockResolvedValue({
             format: { tags: {}, duration: 0 },
             chapters: [],
@@ -139,8 +143,22 @@ describe('getVideoMetadata', () => {
         } as any);
 
         const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
-        expect(video.subtitleStreams[0].subtitleIndex).toBe(0);
-        expect(video.subtitleStreams[1].subtitleIndex).toBe(1);
+        expect(video.subtitleStreams[0].subtitleIndex).toBe(5);
+        expect(video.subtitleStreams[1].subtitleIndex).toBe(8);
+    });
+
+    it('sets subtitleLanguage to the raw language tag', async () => {
+        mockedRunFfprobe.mockResolvedValue({
+            format: { tags: {}, duration: 0 },
+            chapters: [],
+            streams: [
+                { codec_type: 'video', tags: {} },
+                { codec_type: 'subtitle', codec_name: 'ass', index: 1, tags: { language: 'jpn' } }
+            ]
+        } as any);
+
+        const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
+        expect(video.subtitleStreams[0].subtitleLanguage).toBe('jpn');
     });
 
     it('formats subtitle name as "title - language" when title tag is present', async () => {
@@ -155,6 +173,7 @@ describe('getVideoMetadata', () => {
 
         const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
         expect(video.subtitleStreams[0].subtitleName).toBe('Commentary - eng');
+        expect(video.subtitleStreams[0].subtitleLanguage).toBe('eng');
     });
 
     it('formats audio name as "title - language" when title tag is present', async () => {
@@ -190,8 +209,8 @@ describe('generateSubtitleTracks', () => {
     const WORK_DIR = '/tmp/workspace';
 
     const subtitleStreams: SubtitleStream[] = [
-        { subtitleIndex: 0, subtitleName: 'eng', subtitleDuration: 0 },
-        { subtitleIndex: 1, subtitleName: 'fra', subtitleDuration: 0 }
+        { subtitleIndex: 5, subtitleLanguage: 'eng', subtitleName: 'eng', subtitleDuration: 0 },
+        { subtitleIndex: 8, subtitleLanguage: 'fra', subtitleName: 'fra', subtitleDuration: 0 }
     ];
 
     beforeEach(() => {
@@ -208,15 +227,15 @@ describe('generateSubtitleTracks', () => {
 
         expect(mockedRunFfmpeg).toHaveBeenNthCalledWith(
             1,
-            [MEDIA_PATH],
+            MEDIA_PATH,
             expect.stringContaining('subtitles_0_eng.vtt'),
-            ['-map', '0:0', '-c:s', 'webvtt']
+            ['-map', '0:5', '-c:s', 'webvtt']
         );
         expect(mockedRunFfmpeg).toHaveBeenNthCalledWith(
             2,
-            [MEDIA_PATH],
+            MEDIA_PATH,
             expect.stringContaining('subtitles_1_fra.vtt'),
-            ['-map', '0:1', '-c:s', 'webvtt']
+            ['-map', '0:8', '-c:s', 'webvtt']
         );
     });
 
@@ -232,5 +251,62 @@ describe('generateSubtitleTracks', () => {
         const paths = await generateSubtitleTracks([], WORK_DIR, MEDIA_PATH);
         expect(paths).toEqual([]);
         expect(mockedRunFfmpeg).not.toHaveBeenCalled();
+    });
+});
+
+describe('addSubtitlesToMpd', () => {
+    let tmpDir: string;
+    let mpdPath: string;
+
+    const subtitleStreams: SubtitleStream[] = [
+        { subtitleIndex: 5, subtitleLanguage: 'eng', subtitleName: 'eng', subtitleDuration: 0 },
+        { subtitleIndex: 8, subtitleLanguage: 'fra', subtitleName: 'fra', subtitleDuration: 0 }
+    ];
+
+    beforeEach(async () => {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mpd-test-'));
+        mpdPath = path.join(tmpDir, 'output.mpd');
+        await fs.promises.writeFile(mpdPath,
+            '<MPD>\n\t<Period id="0">\n\t\t<AdaptationSet id="0" contentType="video"/>\n\t</Period>\n</MPD>');
+    });
+
+    afterEach(async () => {
+        await fs.promises.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it('injects subtitle AdaptationSet entries before </Period>', async () => {
+        const subtitlePaths = [
+            path.join(tmpDir, 'subtitles_0_eng.vtt'),
+            path.join(tmpDir, 'subtitles_1_fra.vtt')
+        ];
+
+        await addSubtitlesToMpd(mpdPath, subtitlePaths, subtitleStreams);
+
+        const content = await fs.promises.readFile(mpdPath, 'utf-8');
+        expect(content).toContain('mimeType="text/vtt"');
+        expect(content).toContain('lang="eng"');
+        expect(content).toContain('lang="fra"');
+        expect(content).toContain('subtitles_0_eng.vtt');
+        expect(content).toContain('subtitles_1_fra.vtt');
+        expect(content.indexOf('subtitles_0_eng.vtt')).toBeLessThan(content.indexOf('</Period>'));
+    });
+
+    it('assigns ids higher than the highest existing AdaptationSet id', async () => {
+        const subtitlePaths = [path.join(tmpDir, 'subtitles_0_eng.vtt')];
+
+        await addSubtitlesToMpd(mpdPath, subtitlePaths, [subtitleStreams[0]]);
+
+        const content = await fs.promises.readFile(mpdPath, 'utf-8');
+        const allIds = [...content.matchAll(/id="(\d+)"/g)].map(m => parseInt(m[1]));
+        expect(Math.max(...allIds)).toBe(1);
+    });
+
+    it('does nothing when subtitlePaths is empty', async () => {
+        const original = await fs.promises.readFile(mpdPath, 'utf-8');
+
+        await addSubtitlesToMpd(mpdPath, [], []);
+
+        const after = await fs.promises.readFile(mpdPath, 'utf-8');
+        expect(after).toBe(original);
     });
 });
