@@ -56,6 +56,8 @@ describe('E2E: Convert Pipeline', () => {
                     '<MPD>\n\t<Period id="0">\n\t\t<AdaptationSet id="0" contentType="video"/>\n\t</Period>\n</MPD>');
                 await fs.promises.writeFile(path.join(dir, 'init_0.m4s'), Buffer.alloc(0));
                 await fs.promises.writeFile(path.join(dir, 'seg_0_001.m4s'), Buffer.alloc(0));
+            } else if (outputPath.endsWith('.vtt')) {
+                await fs.promises.writeFile(outputPath, 'WEBVTT\n\n');
             }
         });
     });
@@ -103,9 +105,8 @@ describe('E2E: Convert Pipeline', () => {
                     '-f dash',
                     '-map 0:v',
                     '-map 0:a?',
-                    '-c:v copy',
+                    '-c:v h264_nvenc',
                     '-c:a copy',
-                    '-map_metadata:s:0', '0:s:0',
                     '-use_template', '1',
                     '-use_timeline', '1',
                     '-seg_duration', '15',
@@ -175,29 +176,59 @@ describe('E2E: Convert Pipeline', () => {
             } as any);
         });
 
-        it('converts to DASH with subtitle stream maps', async () => {
+        it('extracts subtitles as external wvtt files and DASH has no subtitle streams', async () => {
             const handler = convertMediaHandler(storageClient, config);
             await handler(payload);
 
+            // DASH call must not contain subtitle maps or mov_text
             const dashCall = mockedRunFfmpeg.mock.calls.find(([, out]) => out.endsWith('.mpd'));
             expect(dashCall![2]).toEqual([
                 '-f dash',
                 '-map 0:v',
                 '-map 0:a?',
-                '-map', '0:2',
-                '-map', '0:3',
-                '-c:v copy',
+                '-c:v h264_nvenc',
                 '-c:a copy',
-                '-c:s mov_text',
-                '-map_metadata:s:0', '0:s:0',
-                '-map_metadata:s:2', '0:s:2',
-                '-map_metadata:s:3', '0:s:3',
                 '-use_template', '1',
                 '-use_timeline', '1',
                 '-seg_duration', '15',
                 '-init_seg_name', 'init_v$RepresentationID$.m4s',
                 '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
             ]);
+
+            // one FFmpeg call per subtitle stream with webvtt codec
+            const vttCalls = mockedRunFfmpeg.mock.calls.filter(([, out]) => out.endsWith('.vtt'));
+            expect(vttCalls).toHaveLength(2);
+            expect(vttCalls[0][2]).toEqual(['-map', '0:2', '-c:s', 'webvtt']);
+            expect(vttCalls[1][2]).toEqual(['-map', '0:3', '-c:s', 'webvtt']);
+        });
+
+        it('patches the MPD with wvtt AdaptationSets for each subtitle', async () => {
+            let mpdContent = '';
+            const cleanupSpy = jest.spyOn(convertUtils, 'cleanupWorkspace').mockImplementationOnce(async (workDirPath) => {
+                const mpdPath = path.join(workDirPath, 'output.mpd');
+                if (fs.existsSync(mpdPath)) {
+                    mpdContent = fs.readFileSync(mpdPath, 'utf-8');
+                }
+                return fs.promises.rm(workDirPath, { recursive: true, force: true });
+            });
+
+            const handler = convertMediaHandler(storageClient, config);
+            await handler(payload);
+            cleanupSpy.mockRestore();
+
+            expect(mpdContent).toContain('contentType="text"');
+            expect(mpdContent).toContain('codecs="wvtt"');
+            expect(mpdContent).toContain('lang="eng"');
+            expect(mpdContent).toContain('lang="fra"');
+        });
+
+        it('uploads .vtt subtitle files to storage', async () => {
+            const handler = convertMediaHandler(storageClient, config);
+            await handler(payload);
+
+            const [[, uploadedObjects]] = (storageClient.uploadObjects as jest.Mock).mock.calls as [string, { key: string }[]][];
+            const uploadedKeys = uploadedObjects.map(obj => obj.key);
+            expect(uploadedKeys.filter(k => k.endsWith('.vtt'))).toHaveLength(2);
         });
     });
 });

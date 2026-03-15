@@ -198,33 +198,6 @@ describe('getVideoMetadata', () => {
         const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
         expect(video.audioStreams[0].audioName).toBe('jpn');
     });
-
-    it('uses actual FFprobe stream index for videoIndex', async () => {
-        mockedRunFfprobe.mockResolvedValue({
-            format: { tags: {}, duration: 0 },
-            chapters: [],
-            streams: [
-                { codec_type: 'video', index: 3, tags: {} }
-            ]
-        } as any);
-
-        const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
-        expect(video.videoStreams[0].videoIndex).toBe(3);
-    });
-
-    it('uses actual FFprobe stream index for audioIndex', async () => {
-        mockedRunFfprobe.mockResolvedValue({
-            format: { tags: {}, duration: 0 },
-            chapters: [],
-            streams: [
-                { codec_type: 'video', index: 0, tags: {} },
-                { codec_type: 'audio', index: 2, tags: { DURATION: '00:01:00.000000000' } }
-            ]
-        } as any);
-
-        const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
-        expect(video.audioStreams[0].audioIndex).toBe(2);
-    });
 });
 
 
