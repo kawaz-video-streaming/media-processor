@@ -18,8 +18,7 @@ export type Environment = typeof environments[number];
 
 const environmentVariablesSchema = z.object({
   NODE_ENV: z.enum(environments).default("development"),
-  VOD_BUCKET_NAME: z.string(),
-  UPLOADING_BATCH_SIZE: z.coerce.number()
+  VOD_BUCKET_NAME: z.string()
 });
 
 export interface SystemConfig {
@@ -45,8 +44,7 @@ export const getConfig = (env: NodeJS.ProcessEnv): SystemConfig => {
     env: envVars.NODE_ENV,
     consumers: {
       convertMedia: {
-        vodBucketName: envVars.VOD_BUCKET_NAME,
-        uploadingBatchSize: envVars.UPLOADING_BATCH_SIZE
+        vodBucketName: envVars.VOD_BUCKET_NAME
       }
     },
   }

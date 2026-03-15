@@ -7,8 +7,7 @@ import { ConvertConfig } from '../types';
 describe('createConvertConsumer', () => {
     const mockStorageClient = {} as unknown as StorageClient;
     const config: ConvertConfig = {
-        vodBucketName: 'vod-bucket',
-        uploadingBatchSize: 5
+        vodBucketName: 'vod-bucket'
     };
 
     it('should return a Consumer instance', () => {

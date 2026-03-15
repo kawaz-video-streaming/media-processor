@@ -38,8 +38,7 @@ describe('convertMediaHandler', () => {
     } as unknown as StorageClient;
 
     const config: ConvertConfig = {
-        vodBucketName: 'vod-bucket',
-        uploadingBatchSize: 5
+        vodBucketName: 'vod-bucket'
     };
 
     const mockWorkPaths: WorkPaths = {

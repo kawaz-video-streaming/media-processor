@@ -15,13 +15,12 @@ const mockedRunFfprobe = ffmpegUtils.runFfprobe as jest.MockedFunction<typeof ff
 describe('E2E: Convert Pipeline', () => {
     const storageClient = {
         downloadObject: jest.fn(),
-        uploadObject: jest.fn(),
+        uploadObjects: jest.fn(),
         ensureBucket: jest.fn()
     } as unknown as StorageClient;
 
     const config = {
-        vodBucketName: 'vod-bucket',
-        uploadingBatchSize: 10
+        vodBucketName: 'vod-bucket'
     };
 
     beforeAll(async () => {
@@ -34,9 +33,9 @@ describe('E2E: Convert Pipeline', () => {
         (storageClient.downloadObject as jest.Mock).mockResolvedValue(
             Readable.from(Buffer.from('dud'))
         );
-        // Destroy the ReadStream so the file handle is released before cleanup runs (Windows)
-        (storageClient.uploadObject as jest.Mock).mockImplementation((_bucket, _key, stream: any) => {
-            stream?.destroy();
+        // Destroy ReadStreams so file handles are released before cleanup runs (Windows)
+        (storageClient.uploadObjects as jest.Mock).mockImplementation((_bucket, objects: any[]) => {
+            objects?.forEach(obj => obj?.data?.destroy());
             return Promise.resolve();
         });
         (storageClient.ensureBucket as jest.Mock).mockResolvedValue(undefined);
@@ -123,8 +122,8 @@ describe('E2E: Convert Pipeline', () => {
 
             expect(storageClient.ensureBucket).toHaveBeenCalledWith('vod-bucket');
 
-            const uploadCalls = (storageClient.uploadObject as jest.Mock).mock.calls as [string, string, unknown][];
-            const uploadedKeys = uploadCalls.map(([, key]) => key);
+            const [[, uploadedObjects]] = (storageClient.uploadObjects as jest.Mock).mock.calls as [string, { key: string }[]][];
+            const uploadedKeys = uploadedObjects.map(obj => obj.key);
 
             expect(uploadedKeys.some(k => k.endsWith('output.mpd'))).toBe(true);
             expect(uploadedKeys.some(k => k.endsWith('.m4s'))).toBe(true);
@@ -143,8 +142,8 @@ describe('E2E: Convert Pipeline', () => {
 
         it('cleans up workspace even when an upload fails', async () => {
             const workspaceSpy = jest.spyOn(convertUtils, 'initializeWorkspace');
-            (storageClient.uploadObject as jest.Mock).mockImplementation((_bucket, _key, stream: any) => {
-                stream?.destroy();
+            (storageClient.uploadObjects as jest.Mock).mockImplementation((_bucket, objects: any[]) => {
+                objects?.forEach(obj => obj?.data?.destroy());
                 return Promise.reject(new Error('Upload failed'));
             });
 

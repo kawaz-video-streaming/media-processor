@@ -1,11 +1,10 @@
-import { StorageClient } from '@ido_kawaz/storage-client';
+import { StorageClient, StorageObject } from '@ido_kawaz/storage-client';
 import { FfprobeData, FfprobeStream } from 'fluent-ffmpeg';
 import fs from 'fs';
 import path from 'path';
 import { isEmpty, isNotEmpty } from 'ramda';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
-import { RunInBatches } from '../../utils/batches';
 import { runFfmpeg, runFfprobe } from '../../utils/ffmpeg';
 import { collectFilesRecursively, formatPath } from '../../utils/files';
 import { NonVideoMediaError } from './errors';
@@ -121,23 +120,21 @@ export const convertMediaToDashStream = async (mediaPath: string, mpdPath: strin
 }
 
 
-const createUploadFileToStorage = (storageClient: StorageClient, workDirPath: string, mediaName: string, uploadBucket: string) => async (filePath: string) => {
-    const relativePath = path.relative(workDirPath, filePath);
-    const uploadKey = `${removeExtension(mediaName)}/${formatPath(relativePath)}`;
-
-    await storageClient.uploadObject(uploadBucket, uploadKey, fs.createReadStream(filePath));
-}
-
+const createStorageObjectsToUpload = (workDirPath: string, mediaName: string, filesPaths: string[]): StorageObject[] =>
+    filesPaths.map(filePath => {
+        const relativePath = path.relative(workDirPath, filePath);
+        const uploadKey = `${removeExtension(mediaName)}/${formatPath(relativePath)}`;
+        return { key: uploadKey, data: fs.createReadStream(filePath) };
+    });
 export const uploadStreamToStorage = async (
     storageClient: StorageClient,
     mediaName: string,
     workDirPath: string,
-    { vodBucketName, uploadingBatchSize }: ConvertConfig,
+    { vodBucketName }: ConvertConfig,
 ) => {
     const uploadBucket = vodBucketName;
     await storageClient.ensureBucket(uploadBucket);
     const filesToUpload = await collectFilesRecursively(workDirPath);
-    const uploadFileToStorage = createUploadFileToStorage(storageClient, workDirPath, mediaName, uploadBucket);
-    const generateProgressMessage = (index: number, totalBatches: number) => `Uploaded ${index / totalBatches * 100}% of files to storage (${index}/${totalBatches} batches)`;
-    await RunInBatches(filesToUpload, uploadingBatchSize, uploadFileToStorage, generateProgressMessage);
+    const storageObjects = createStorageObjectsToUpload(workDirPath, mediaName, filesToUpload);
+    await storageClient.uploadObjects(uploadBucket, storageObjects);
 };

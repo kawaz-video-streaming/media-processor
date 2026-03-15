@@ -52,7 +52,6 @@ export interface Convert {
 
 export interface ConvertConfig {
     vodBucketName: string;
-    uploadingBatchSize: number;
 }
 
 const convertSchema = z.object({

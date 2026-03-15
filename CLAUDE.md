@@ -50,12 +50,12 @@ This is a headless async media processing service. The HTTP server exists only f
 5. Probe media with FFprobe (`getVideoMetadata`) to extract video/audio/subtitle streams, chapters, and duration; throws `NonVideoMediaError` if no video stream found
 6. Extract any detected ASS subtitle streams as `.vtt` files with FFmpeg
 7. Convert to MPEG-DASH with FFmpeg (`-f dash`, 15s segments, copies video/audio streams without re-encoding); source file and subtitle inputs deleted from workspace after conversion
-8. Upload all workspace files to VOD S3 bucket under `<mediaName-no-ext>/` key prefix, in batches of `UPLOADING_BATCH_SIZE`
+8. Upload all workspace files to VOD S3 bucket under `<mediaName-no-ext>/` key prefix via `storageClient.uploadObjects` (bulk upload)
 9. `finally`: delete workspace directory regardless of success or failure
 
 **Key directories:**
 - `src/background/convert/` — entire conversion consumer: `handler.ts` orchestrates, `utils.ts` implements each step, `types.ts` has Zod schema + interfaces, `errors.ts` has domain errors, `binding.ts` has AMQP queue/exchange/topic constants
-- `src/utils/` — shared: `ffmpeg.ts` (FFmpeg/FFprobe promise wrappers), `files.ts` (recursive file collection, temp folder creation, path formatting), `batches.ts` (batch processor with progress logging), `zod.ts` (validation helper)
+- `src/utils/` — shared: `ffmpeg.ts` (FFmpeg/FFprobe promise wrappers), `files.ts` (recursive file collection, temp folder creation, path formatting), `zod.ts` (validation helper)
 - `src/services/` — `system.ts` bootstraps everything; `db.ts` inits MongoDB
 - `src/dal/` — DAL stubs, currently empty (TODO)
 - `src/api/` — HTTP routes: health check + Swagger UI only (more routes TODO)
@@ -86,10 +86,9 @@ AWS_ACCESS_KEY_ID=dummyuser
 AWS_SECRET_ACCESS_KEY=dummypassword
 AMQP_CONNECTION_STRING=amqp://kawaz:kawaz@localhost:5672
 VOD_BUCKET_NAME=vod
-UPLOADING_BATCH_SIZE=100
 ```
 
-`NODE_ENV=local` triggers automatic `tmp/` folder creation at startup. `VOD_BUCKET_NAME` and `UPLOADING_BATCH_SIZE` are Zod-validated at startup and will throw `InvalidConfigError` with a descriptive message if missing.
+`NODE_ENV=local` triggers automatic `tmp/` folder creation at startup. `VOD_BUCKET_NAME` is Zod-validated at startup and will throw `InvalidConfigError` with a descriptive message if missing.
 
 ## Testing Notes
 
