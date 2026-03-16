@@ -1,75 +1,51 @@
-import Joi from "joi";
-import { isNotNil } from "ramda";
-import { DatabaseConfig } from "./services/db/types";
-import { ServerConfig } from "./services/server/types";
-import { StorageClientConfig } from "@ido_kawaz/storage-client";
-import { AmqpConfig } from "@ido_kawaz/amqp-client";
+import { AmqpConfig, createAmqpConfig } from "@ido_kawaz/amqp-client";
+import { createMongoConfig, MongoConfig } from "@ido_kawaz/mongo-client";
+import { createServerConfig, ServerConfig } from "@ido_kawaz/server-framework";
+import { createStorageConfig, StorageConfig } from '@ido_kawaz/storage-client';
+import { z } from 'zod';
+import { ConsumersConfig } from "./background/config";
 
 class InvalidConfigError extends Error {
-  constructor(error: Joi.ValidationError) {
-    const message = `Invalid configuration: \n${error.details.map(detail => detail.message).join(',\n')}`;
+  constructor(error: z.ZodError) {
+    const message = `Invalid configuration: \n${error.issues.map(detail => detail.message).join(',\n')}`;
     super(message);
   }
 }
 
-interface EnvironmentVariables {
-  PORT: number;
-  SECURED: boolean;
-  MONGO_CONNECTION_STRING: string;
-  AMQP_CONNECTION_STRING: string;
-  AWS_ENDPOINT: string;
-  AWS_REGION: string;
-  AWS_ACCESS_KEY_ID: string;
-  AWS_SECRET_ACCESS_KEY: string;
-  AWS_PART_SIZE: number;
-  AWS_MAX_CONCURRENCY: number;
-}
+const environments = ["local", "development", "test"] as const;
 
-const environmentVariablesSchema = Joi.object<EnvironmentVariables>({
-  PORT: Joi.number().required(),
-  SECURED: Joi.boolean().default(false),
-  MONGO_CONNECTION_STRING: Joi.string().uri().required(),
-  AMQP_CONNECTION_STRING: Joi.string().uri().required(),
-  AWS_ENDPOINT: Joi.string().uri().required(),
-  AWS_REGION: Joi.string().default("us-east-1"),
-  AWS_ACCESS_KEY_ID: Joi.string().required(),
-  AWS_SECRET_ACCESS_KEY: Joi.string().required(),
-  AWS_PART_SIZE: Joi.number().default(128 * 1024 * 1024),
-  AWS_MAX_CONCURRENCY: Joi.number().default(4)
-}).unknown();
+export type Environment = typeof environments[number];
+
+const environmentVariablesSchema = z.object({
+  NODE_ENV: z.enum(environments).default("development"),
+  VOD_BUCKET_NAME: z.string()
+});
 
 export interface SystemConfig {
+  env: Environment;
+  db: MongoConfig;
   amqp: AmqpConfig;
-  storage: StorageClientConfig;
+  consumers: ConsumersConfig;
+  storage: StorageConfig;
   server: ServerConfig;
-  db: DatabaseConfig;
 }
 
 export const getConfig = (env: NodeJS.ProcessEnv): SystemConfig => {
-  const { error, value } = environmentVariablesSchema.validate(env, { abortEarly: false, convert: true });
-  if (isNotNil(error)) {
+  const { success, error, data: envVars } = environmentVariablesSchema.safeParse(env);
+  if (!success) {
     throw new InvalidConfigError(error);
   }
+
   return {
-    storage: {
-      region: value.AWS_REGION,
-      endpoint: value.AWS_ENDPOINT,
-      credentials: {
-        accessKeyId: value.AWS_ACCESS_KEY_ID,
-        secretAccessKey: value.AWS_SECRET_ACCESS_KEY
-      },
-      partSize: value.AWS_PART_SIZE,
-      maxConcurrency: value.AWS_MAX_CONCURRENCY
+    server: createServerConfig(),
+    db: createMongoConfig(),
+    storage: createStorageConfig(),
+    amqp: createAmqpConfig(),
+    env: envVars.NODE_ENV,
+    consumers: {
+      convertMedia: {
+        vodBucketName: envVars.VOD_BUCKET_NAME
+      }
     },
-    db: {
-      dbConnectionString: value.MONGO_CONNECTION_STRING
-    },
-    amqp: {
-      amqpConnectionString: value.AMQP_CONNECTION_STRING
-    },
-    server: {
-      port: value.PORT,
-      secured: value.SECURED
-    }
   }
 }

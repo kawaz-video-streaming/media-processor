@@ -1,22 +1,12 @@
 import { AmqpClient } from "@ido_kawaz/amqp-client";
+import { Application } from '@ido_kawaz/server-framework';
 import { StorageClient } from "@ido_kawaz/storage-client";
-import bodyParser from "body-parser";
-import cors from "cors";
-import express, { Express } from "express";
 import { StatusCodes } from "http-status-codes";
 import swaggerUi from "swagger-ui-express";
-import { swaggerSpec } from "../../config/swagger";
-import { RequestErrorHandler } from "../../utils/decorators";
-import { Dals } from "../db/types";
+import { Dals } from "../dal/types";
+import { swaggerSpec } from "../services/swagger";
 
-export const registerMiddlewares = (app: Express) => {
-    app.use(cors());
-    app.use(express.json());
-    app.use(bodyParser.urlencoded({ extended: true }));
-    return app;
-};
-
-export const registerRoutes = (app: Express, _storageClient: StorageClient, _amqpClient: AmqpClient, _dals: Dals) => {
+export const registerRoutes = (_storageClient: StorageClient, _amqpClient: AmqpClient, _dals: Dals) => (app: Application) => {
     /**
      * @openapi
      * /health:
@@ -38,7 +28,6 @@ export const registerRoutes = (app: Express, _storageClient: StorageClient, _amq
 
     // API routes 
     //TODO: add API routes here
-    app.use(RequestErrorHandler);
 
     return app;
 };
