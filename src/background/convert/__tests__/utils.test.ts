@@ -7,7 +7,6 @@ import * as ffmpegUtils from '../../../utils/ffmpeg';
 
 const mockedRunFfprobe = ffmpegUtils.runFfprobe as jest.MockedFunction<typeof ffmpegUtils.runFfprobe>;
 
-const MEDIA_ID = '507f1f77bcf86cd799439011';
 const MEDIA_PATH = '/tmp/workspace/video.mp4';
 
 describe('getVideoChapters', () => {
@@ -59,18 +58,13 @@ describe('getVideoMetadata', () => {
     });
 
     it('probes the media file at the given path', async () => {
-        await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
+        await getVideoMetadata(MEDIA_PATH);
         expect(mockedRunFfprobe).toHaveBeenCalledWith(MEDIA_PATH);
     });
 
-    it('sets videoId from the mediaId parameter', async () => {
-        const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
-        expect(video.videoId).toBe(MEDIA_ID);
-    });
-
-    it('uses format.tags.title as videoName when present', async () => {
-        const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
-        expect(video.videoName).toBe('My Video');
+    it('uses format.tags.title as title when present', async () => {
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.title).toBe('My Video');
     });
 
     it('falls back to filename (without extension) when title tag is absent', async () => {
@@ -80,13 +74,13 @@ describe('getVideoMetadata', () => {
             streams: [{ codec_type: 'video', tags: {} }]
         } as any);
 
-        const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
-        expect(video.videoName).toBe('video');
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.title).toBe('video');
     });
 
-    it('sets videoDuration from format.duration', async () => {
-        const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
-        expect(video.videoDuration).toBe(120);
+    it('sets duration from format.duration', async () => {
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.duration).toBe(120);
     });
 
     it('throws NonVideoMediaError when there are no video streams', async () => {
@@ -96,7 +90,7 @@ describe('getVideoMetadata', () => {
             streams: [{ codec_type: 'audio', tags: {} }]
         } as any);
 
-        await expect(getVideoMetadata(MEDIA_ID, MEDIA_PATH)).rejects.toThrow(NonVideoMediaError);
+        await expect(getVideoMetadata(MEDIA_PATH)).rejects.toThrow(NonVideoMediaError);
     });
 
     it('throws NonVideoMediaError when streams array is empty', async () => {
@@ -106,7 +100,7 @@ describe('getVideoMetadata', () => {
             streams: []
         } as any);
 
-        await expect(getVideoMetadata(MEDIA_ID, MEDIA_PATH)).rejects.toThrow(NonVideoMediaError);
+        await expect(getVideoMetadata(MEDIA_PATH)).rejects.toThrow(NonVideoMediaError);
     });
 
     it('only includes subtitle streams with codec_name "ass"', async () => {
@@ -120,13 +114,12 @@ describe('getVideoMetadata', () => {
             ]
         } as any);
 
-        const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
+        const video = await getVideoMetadata(MEDIA_PATH);
         expect(video.subtitleStreams).toHaveLength(1);
-        expect(video.subtitleStreams[0].subtitleName).toBe('eng');
-        expect(video.subtitleStreams[0].subtitleLanguage).toBe('eng');
+        expect(video.subtitleStreams[0].language).toBe('eng');
     });
 
-    it('uses actual FFprobe stream index for subtitleIndex', async () => {
+    it('uses actual FFprobe stream index for subtitle index', async () => {
         mockedRunFfprobe.mockResolvedValue({
             format: { tags: {}, duration: 0 },
             chapters: [],
@@ -137,12 +130,12 @@ describe('getVideoMetadata', () => {
             ]
         } as any);
 
-        const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
-        expect(video.subtitleStreams[0].subtitleIndex).toBe(5);
-        expect(video.subtitleStreams[1].subtitleIndex).toBe(8);
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.subtitleStreams[0].index).toBe(5);
+        expect(video.subtitleStreams[1].index).toBe(8);
     });
 
-    it('sets subtitleLanguage to the raw language tag', async () => {
+    it('sets subtitle language to the raw language tag', async () => {
         mockedRunFfprobe.mockResolvedValue({
             format: { tags: {}, duration: 0 },
             chapters: [],
@@ -152,11 +145,11 @@ describe('getVideoMetadata', () => {
             ]
         } as any);
 
-        const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
-        expect(video.subtitleStreams[0].subtitleLanguage).toBe('jpn');
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.subtitleStreams[0].language).toBe('jpn');
     });
 
-    it('formats subtitle name as "title - language" when title tag is present', async () => {
+    it('sets subtitle title from title tag when present', async () => {
         mockedRunFfprobe.mockResolvedValue({
             format: { tags: {}, duration: 0 },
             chapters: [],
@@ -166,12 +159,12 @@ describe('getVideoMetadata', () => {
             ]
         } as any);
 
-        const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
-        expect(video.subtitleStreams[0].subtitleName).toBe('Commentary - eng');
-        expect(video.subtitleStreams[0].subtitleLanguage).toBe('eng');
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.subtitleStreams[0].title).toBe('Commentary');
+        expect(video.subtitleStreams[0].language).toBe('eng');
     });
 
-    it('formats audio name as "title - language" when title tag is present', async () => {
+    it('sets audio title from title tag when present', async () => {
         mockedRunFfprobe.mockResolvedValue({
             format: { tags: {}, duration: 0 },
             chapters: [],
@@ -181,11 +174,11 @@ describe('getVideoMetadata', () => {
             ]
         } as any);
 
-        const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
-        expect(video.audioStreams[0].audioName).toBe('Stereo - eng');
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.audioStreams[0].title).toBe('Stereo');
     });
 
-    it('formats audio name as just language when title tag is absent', async () => {
+    it('defaults audio title to "Audio" when title tag is absent', async () => {
         mockedRunFfprobe.mockResolvedValue({
             format: { tags: {}, duration: 0 },
             chapters: [],
@@ -195,8 +188,8 @@ describe('getVideoMetadata', () => {
             ]
         } as any);
 
-        const video = await getVideoMetadata(MEDIA_ID, MEDIA_PATH);
-        expect(video.audioStreams[0].audioName).toBe('jpn');
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.audioStreams[0].title).toBe('Audio');
     });
 });
 

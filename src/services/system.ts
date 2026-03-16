@@ -9,8 +9,9 @@ import { initializeDB } from "./db";
 
 export const startSystem = async (config: SystemConfig) => {
     const storageClient = new StorageClient(config.storage);
-    const consumers = createConsumers(storageClient, config.consumers);
-    const amqpClient = new AmqpClient(config.amqp, consumers);
+    const amqpClient = new AmqpClient(config.amqp);
+    const consumers = createConsumers(storageClient, amqpClient, config.consumers);
+    amqpClient.registerConsumers(consumers);
     const dals = await initializeDB(config.db);
     await amqpClient.start(SERVICE_NAME);
     const server = createServer(config.server, registerRoutes);

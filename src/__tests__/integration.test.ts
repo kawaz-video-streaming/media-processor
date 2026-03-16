@@ -129,7 +129,7 @@ describe('E2E: Convert Pipeline', () => {
 
             expect(uploadedKeys.some(k => k.endsWith('output.mpd'))).toBe(true);
             expect(uploadedKeys.some(k => k.endsWith('.m4s'))).toBe(true);
-            uploadedKeys.forEach(key => expect(key.startsWith('test-video/')).toBe(true));
+            uploadedKeys.forEach(key => expect(key.startsWith('507f1f77bcf86cd799439011/')).toBe(true));
         });
 
         it('cleans up workspace after successful conversion', async () => {
@@ -273,24 +273,6 @@ describe('E2E: Convert Pipeline', () => {
             expect(chaptersVttContent).toContain('Introduction');
             expect(chaptersVttContent).toContain('00:05:00.000 --> 00:15:00.000');
             expect(chaptersVttContent).toContain('Chapter One');
-        });
-
-        it('patches the MPD with a chapters AdaptationSet', async () => {
-            let mpdContent = '';
-            const cleanupSpy = jest.spyOn(convertUtils, 'cleanupWorkspace').mockImplementationOnce(async (workDirPath) => {
-                const mpdPath = path.join(workDirPath, 'output.mpd');
-                if (existsSync(mpdPath)) {
-                    mpdContent = readFileSync(mpdPath, 'utf-8');
-                }
-                return rm(workDirPath, { recursive: true, force: true });
-            });
-
-            const handler = convertMediaHandler(storageClient, config);
-            await handler(payload);
-            cleanupSpy.mockRestore();
-
-            expect(mpdContent).toContain('urn:mpeg:dash:chapter:2022');
-            expect(mpdContent).toContain('<BaseURL>chapters.vtt</BaseURL>');
         });
 
         it('uploads chapters.vtt to storage', async () => {
