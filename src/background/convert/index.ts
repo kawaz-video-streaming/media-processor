@@ -8,4 +8,4 @@ import { Convert, ConvertConfig, validateConvertPayload } from "./types";
 export const createConvertConsumer = (storageClient: StorageClient, config: ConvertConfig) =>
     new Consumer<Convert, ConvertMediaConsumerBinding>('convert', createConvertConsumerBinding())
         .on('validateMessage', validateConvertPayload)
-        .on('handleMessage', convertMediaHandler(storageClient, config));
+        .on('handleMessage', convertMediaHandler(storageClient, config))

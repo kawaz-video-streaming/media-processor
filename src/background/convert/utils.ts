@@ -1,8 +1,9 @@
 import { StorageClient, StorageObject } from '@ido_kawaz/storage-client';
 import { FfprobeData, FfprobeStream } from 'fluent-ffmpeg';
-import fs from 'fs';
-import path from 'path';
-import { isEmpty } from 'ramda';
+import { createReadStream, createWriteStream, mkdtempSync } from 'fs';
+import { readFile, rm, unlink, writeFile } from 'fs/promises';
+import { basename, extname, join, relative, resolve } from 'path';
+import { isEmpty, isNil } from 'ramda';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { runFfmpeg, runFfprobe } from '../../utils/ffmpeg';
@@ -10,23 +11,31 @@ import { collectFilesRecursively, formatPath } from '../../utils/files';
 import { NonVideoMediaError } from './errors';
 import { AudioStream, ConvertConfig, SubtitleStream, Video, VideoChapter, VideoStream, WorkPaths } from './types';
 
-const removeExtension = (fileName: string) => fileName.replace(path.extname(fileName), '');
+const removeExtension = (fileName: string) => fileName.replace(extname(fileName), '');
 
 export const initializeWorkspace = (mediaName: string): WorkPaths => {
-    const workDirPath = formatPath(path.resolve(fs.mkdtempSync(path.join(__dirname, '../../../tmp', `${removeExtension(mediaName)}-`))));
-    const mediaPath = formatPath(path.resolve(workDirPath, mediaName));
-    const mpdPath = formatPath(path.resolve(workDirPath, 'output.mpd'));
+    const workDirPath = formatPath(resolve(mkdtempSync(join(__dirname, '../../../tmp', `${removeExtension(mediaName)}-`))));
+    const mediaPath = formatPath(resolve(workDirPath, mediaName));
+    const mpdPath = formatPath(resolve(workDirPath, 'output.mpd'));
     return { mediaPath, mpdPath, workDirPath };
 }
 
-export const cleanupWorkspace = (workDirPath: string) =>
-    fs.promises.rm(workDirPath, { recursive: true, force: true });
+export const cleanupWorkspace = async (workDirPath: string) => {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            await rm(workDirPath, { recursive: true, force: true });
+            break;
+        } catch (err) {
+            await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+        }
+    }
+}
 
 export const writeMediaToDirectory = (mediaStream: Readable, mediaPath: string) =>
-    pipeline(mediaStream, fs.createWriteStream(mediaPath));
+    pipeline(mediaStream, createWriteStream(mediaPath));
 
 const createSubtitlePath = (workDirPath: string, index: number, language: string) =>
-    formatPath(path.resolve(workDirPath, `subtitles_${index}_${language}.vtt`));
+    formatPath(resolve(workDirPath, `subtitles_${index}_${language}.vtt`));
 
 const createSubtitleFileToWebVttOutputOptions = (subtitleStreamIndex: number) => [
     '-map', `0:${subtitleStreamIndex}`,
@@ -40,10 +49,31 @@ export const generateSubtitleTracks = (subtitleStreams: SubtitleStream[], workDi
         return subtitlePath;
     }));
 
-const formatDurationInMs = (duration: any) => {
-    if (typeof duration !== 'string') {
-        return 0;
+const formatVttTimestamp = (seconds: number): string => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${s.toFixed(3).padStart(6, '0')}`;
+};
+
+export const generateChaptersTrack = async (chapters: VideoChapter[], workDirPath: string): Promise<string | null> => {
+    if (isEmpty(chapters)) {
+        return null;
     }
+    const lines = ['WEBVTT', ''];
+    chapters.forEach((chapter, index) => {
+        lines.push(`Chapter ${index + 1}`);
+        lines.push(`${formatVttTimestamp(chapter.chapterStartTime)} --> ${formatVttTimestamp(chapter.chapterEndTime)}`);
+        lines.push(chapter.chapterName);
+        lines.push('');
+    });
+    const chaptersPath = formatPath(resolve(workDirPath, 'chapters.vtt'));
+    await writeFile(chaptersPath, lines.join('\n'), 'utf-8');
+    return chaptersPath;
+};
+
+const formatDurationInMs = (duration: string | undefined) => {
+    if (typeof duration !== 'string') return 0;
     const [hours, minutes, seconds] = duration.split(':').map(Number);
     return (hours * 3600 + minutes * 60 + seconds) * 1000;
 }
@@ -56,7 +86,7 @@ const getVideoStreams = (mediaStreams: FfprobeStream[], defaultVideoName: string
         videoIndex: stream.index ?? index,
         videoCodec: stream.codec_name ?? 'unknown',
         videoName: (stream.tags.title as string) ?? defaultVideoName,
-        videoDuration: formatDurationInMs(stream.tags.DURATION) ?? defaultVideoDuration
+        videoDuration: formatDurationInMs(stream.tags.DURATION as string) ?? defaultVideoDuration
     }));
     if (isEmpty(videoStreams)) {
         throw new NonVideoMediaError();
@@ -71,7 +101,7 @@ const getAudioStreams = (mediaStreams: FfprobeStream[], defaultAudioDuration: nu
             audioIndex: stream.index ?? index,
             audioCodec: stream.codec_name ?? 'unknown',
             audioName: `${stream.tags?.title ? `${stream.tags.title} - ` : ''}${stream.tags?.language ?? 'unknown language'}`,
-            audioDuration: formatDurationInMs(stream.tags.DURATION) ?? defaultAudioDuration
+            audioDuration: formatDurationInMs(stream.tags.DURATION as string) ?? defaultAudioDuration
         }));
 
 const getSubtitleStreams = (mediaStreams: FfprobeStream[]): SubtitleStream[] =>
@@ -81,7 +111,7 @@ const getSubtitleStreams = (mediaStreams: FfprobeStream[]): SubtitleStream[] =>
             subtitleIndex: stream.index ?? index,
             subtitleLanguage: stream.tags?.language ?? 'und',
             subtitleName: `${stream.tags?.title ? `${stream.tags.title} - ` : ''}${stream.tags?.language ?? 'unknown language'}`,
-            subtitleDuration: formatDurationInMs(stream.tags.DURATION) ?? 0
+            subtitleDuration: formatDurationInMs(stream.tags.DURATION as string) ?? 0
         }));
 
 export const getVideoChapters = (mediaData: FfprobeData): VideoChapter[] => mediaData.chapters.map(chapter => ({
@@ -93,7 +123,7 @@ export const getVideoChapters = (mediaData: FfprobeData): VideoChapter[] => medi
 
 export const getVideoMetadata = async (mediaId: string, mediaPath: string): Promise<Video> => {
     const mediaData = await runFfprobe(mediaPath);
-    const mediaName = (mediaData.format.tags?.title as string) ?? path.basename(mediaPath, path.extname(mediaPath));
+    const mediaName = (mediaData.format.tags?.title as string) ?? basename(mediaPath, extname(mediaPath));
     const mediaDuration = mediaData.format.duration ?? 0;
     const mediaChapters = getVideoChapters(mediaData);
     const mediaStreams = mediaData.streams ?? [];
@@ -128,32 +158,60 @@ export const convertMediaToDashStream = async (mediaPath: string, mpdPath: strin
         '-init_seg_name', 'init_v$RepresentationID$.m4s',
         '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
     ], true);
-    await fs.promises.unlink(mediaPath);
+    await unlink(mediaPath);
 }
+
+export const addChaptersToMpd = async (mpdPath: string, chaptersPath: string | null): Promise<void> => {
+    if (isNil(chaptersPath)) {
+        return;
+    }
+    const mpdContent = await readFile(mpdPath, 'utf-8');
+    const idMatches = [...mpdContent.matchAll(/id="(\d+)"/g)];
+    const maxId = idMatches.reduce((max, match) => Math.max(max, parseInt(match[1])), -1);
+    const id = maxId + 1;
+    const chapterSet = [
+        `\t\t<AdaptationSet id="${id}" contentType="text" mimeType="text/vtt">`,
+        `\t\t\t<Role schemeIdUri="urn:mpeg:dash:role:2011" value="description"/>`,
+        `\t\t\t<SupplementalProperty schemeIdUri="urn:mpeg:dash:chapter:2022" value="chapters"/>`,
+        `\t\t\t<Representation id="${id}" mimeType="text/vtt" codecs="wvtt">`,
+        `\t\t\t\t<BaseURL>chapters.vtt</BaseURL>`,
+        `\t\t\t</Representation>`,
+        `\t\t</AdaptationSet>`,
+    ].join('\n');
+    const modified = mpdContent.replace('\n\t</Period>', `\n${chapterSet}\n\t</Period>`);
+    await writeFile(mpdPath, modified, 'utf-8');
+};
 
 export const addSubtitlesToMpd = async (mpdPath: string, subtitlePaths: string[], subtitleStreams: SubtitleStream[]) => {
     if (isEmpty(subtitlePaths)) {
         return;
     }
-    const mpdContent = await fs.promises.readFile(mpdPath, 'utf-8');
+    const mpdContent = await readFile(mpdPath, 'utf-8');
     const idMatches = [...mpdContent.matchAll(/id="(\d+)"/g)];
     const maxId = idMatches.reduce((max, match) => Math.max(max, parseInt(match[1])), -1);
     const subtitleSets = subtitlePaths.map((subtitlePath, index) => {
         const id = maxId + 1 + index;
         const { subtitleLanguage } = subtitleStreams[index];
-        const fileName = path.basename(subtitlePath);
-        return `\t\t<AdaptationSet id="${id}" contentType="text" mimeType="text/vtt" lang="${subtitleLanguage}">\n\t\t\t<Representation id="${id}" mimeType="text/vtt" codecs="wvtt">\n\t\t\t\t<BaseURL>${fileName}</BaseURL>\n\t\t\t</Representation>\n\t\t</AdaptationSet>`;
+        const fileName = basename(subtitlePath);
+        return [
+            `\t\t<AdaptationSet id="${id}" contentType="text" mimeType="text/vtt" lang="${subtitleLanguage}">`,
+            `\t\t\t<Role schemeIdUri="urn:mpeg:dash:role:2011" value="subtitle"/>`,
+            `\t\t\t<Representation id="${id}" mimeType="text/vtt" codecs="wvtt">`,
+            `\t\t\t\t<BaseURL>${fileName}</BaseURL>`,
+            `\t\t\t</Representation>`,
+            `\t\t</AdaptationSet>`,
+        ].join('\n');
     }).join('\n');
     const modified = mpdContent.replace('\n\t</Period>', `\n${subtitleSets}\n\t</Period>`);
-    await fs.promises.writeFile(mpdPath, modified, 'utf-8');
+    await writeFile(mpdPath, modified, 'utf-8');
 }
 
 
 const createStorageObjectsToUpload = (workDirPath: string, mediaName: string, filesPaths: string[]): StorageObject[] =>
     filesPaths.map(filePath => {
-        const relativePath = path.relative(workDirPath, filePath);
+        const relativePath = relative(workDirPath, filePath);
         const uploadKey = `${removeExtension(mediaName)}/${formatPath(relativePath)}`;
-        return { key: uploadKey, data: fs.createReadStream(filePath) };
+        return { key: uploadKey, data: createReadStream(filePath) };
     });
 
 export const uploadStreamToStorage = async (

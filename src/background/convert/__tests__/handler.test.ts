@@ -8,8 +8,10 @@ jest.mock('../utils', () => ({
     writeMediaToDirectory: jest.fn(),
     getVideoMetadata: jest.fn(),
     generateSubtitleTracks: jest.fn(),
+    generateChaptersTrack: jest.fn(),
     convertMediaToDashStream: jest.fn(),
     addSubtitlesToMpd: jest.fn(),
+    addChaptersToMpd: jest.fn(),
     uploadStreamToStorage: jest.fn(),
     cleanupWorkspace: jest.fn()
 }));
@@ -19,8 +21,10 @@ import {
     writeMediaToDirectory,
     getVideoMetadata,
     generateSubtitleTracks,
+    generateChaptersTrack,
     convertMediaToDashStream,
     addSubtitlesToMpd,
+    addChaptersToMpd,
     uploadStreamToStorage,
     cleanupWorkspace
 } from '../utils';
@@ -29,8 +33,10 @@ const mockedInitializeWorkspace = initializeWorkspace as jest.MockedFunction<typ
 const mockedWriteMedia = writeMediaToDirectory as jest.MockedFunction<typeof writeMediaToDirectory>;
 const mockedGetVideoMetadata = getVideoMetadata as jest.MockedFunction<typeof getVideoMetadata>;
 const mockedGenerateSubtitleTracks = generateSubtitleTracks as jest.MockedFunction<typeof generateSubtitleTracks>;
+const mockedGenerateChaptersTrack = generateChaptersTrack as jest.MockedFunction<typeof generateChaptersTrack>;
 const mockedConvertMedia = convertMediaToDashStream as jest.MockedFunction<typeof convertMediaToDashStream>;
 const mockedAddSubtitlesToMpd = addSubtitlesToMpd as jest.MockedFunction<typeof addSubtitlesToMpd>;
+const mockedAddChaptersToMpd = addChaptersToMpd as jest.MockedFunction<typeof addChaptersToMpd>;
 const mockedUploadStream = uploadStreamToStorage as jest.MockedFunction<typeof uploadStreamToStorage>;
 const mockedCleanup = cleanupWorkspace as jest.MockedFunction<typeof cleanupWorkspace>;
 
@@ -75,8 +81,10 @@ describe('convertMediaHandler', () => {
         mockedWriteMedia.mockResolvedValue(undefined);
         mockedGetVideoMetadata.mockResolvedValue(mockVideo);
         mockedGenerateSubtitleTracks.mockResolvedValue([]);
+        mockedGenerateChaptersTrack.mockResolvedValue(null);
         mockedConvertMedia.mockResolvedValue(undefined);
         mockedAddSubtitlesToMpd.mockResolvedValue(undefined);
+        mockedAddChaptersToMpd.mockResolvedValue(undefined);
         mockedUploadStream.mockResolvedValue(undefined);
         mockedCleanup.mockResolvedValue(undefined);
     });
@@ -171,15 +179,17 @@ describe('convertMediaHandler', () => {
         mockedWriteMedia.mockImplementation(async () => { callOrder.push('writeMedia'); });
         mockedGetVideoMetadata.mockImplementation(async () => { callOrder.push('getVideoMetadata'); return mockVideo; });
         mockedGenerateSubtitleTracks.mockImplementation(async () => { callOrder.push('generateSubtitles'); return []; });
+        mockedGenerateChaptersTrack.mockImplementation(async () => { callOrder.push('generateChapters'); return null; });
         mockedConvertMedia.mockImplementation(async () => { callOrder.push('convert'); });
         mockedAddSubtitlesToMpd.mockImplementation(async () => { callOrder.push('addSubtitlesToMpd'); });
+        mockedAddChaptersToMpd.mockImplementation(async () => { callOrder.push('addChaptersToMpd'); });
         mockedUploadStream.mockImplementation(async () => { callOrder.push('upload'); });
         mockedCleanup.mockImplementation(async () => { callOrder.push('cleanup'); });
 
         const handler = convertMediaHandler(mockStorageClient, config);
         await handler(basePayload);
 
-        expect(callOrder).toEqual(['download', 'initWorkspace', 'writeMedia', 'getVideoMetadata', 'generateSubtitles', 'convert', 'addSubtitlesToMpd', 'upload', 'cleanup']);
+        expect(callOrder).toEqual(['download', 'initWorkspace', 'writeMedia', 'getVideoMetadata', 'generateSubtitles', 'generateChapters', 'convert', 'addSubtitlesToMpd', 'addChaptersToMpd', 'upload', 'cleanup']);
     });
 
     it('should cleanup workspace even when conversion fails', async () => {
