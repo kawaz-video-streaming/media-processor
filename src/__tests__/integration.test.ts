@@ -3,8 +3,8 @@ import { existsSync, readFileSync } from 'fs';
 import { rm, writeFile } from 'fs/promises';
 import path from 'path';
 import { Readable } from 'stream';
+import { ConversionFatalError } from '../background/convert/errors';
 import { convertMediaHandler } from '../background/convert/handler';
-import * as convertUtils from '../background/convert/utils';
 import * as ffmpegUtils from '../utils/ffmpeg';
 import { createTempFolder } from '../utils/files';
 
@@ -71,8 +71,7 @@ describe('E2E: Convert Pipeline', () => {
             mediaRoutingKey: 'uploads/audio-only.mp3'
         };
 
-        it('rejects the file and cleans up the workspace when no video stream is found', async () => {
-            const workspaceSpy = jest.spyOn(convertUtils, 'initializeWorkspace');
+        it('rejects the file with ConversionFatalError carrying workDirPath when no video stream is found', async () => {
             mockedRunFfprobe.mockResolvedValue({
                 format: { tags: {}, duration: 180 },
                 chapters: [],
@@ -80,10 +79,12 @@ describe('E2E: Convert Pipeline', () => {
             } as any);
 
             const handler = convertMediaHandler(storageClient, config);
-            await expect(handler(payload)).rejects.toThrow('No video stream found in media');
+            let caughtError: any;
+            try { await handler(payload); } catch (err) { caughtError = err; }
 
-            const { workDirPath } = workspaceSpy.mock.results[0].value;
-            expect(existsSync(workDirPath)).toBe(false);
+            expect(caughtError).toBeInstanceOf(ConversionFatalError);
+            expect(existsSync(caughtError.workDirPath)).toBe(true);
+            await rm(caughtError.workDirPath, { recursive: true, force: true });
         });
     });
 
@@ -132,28 +133,29 @@ describe('E2E: Convert Pipeline', () => {
             uploadedKeys.forEach(key => expect(key.startsWith('507f1f77bcf86cd799439011/')).toBe(true));
         });
 
-        it('cleans up workspace after successful conversion', async () => {
-            const workspaceSpy = jest.spyOn(convertUtils, 'initializeWorkspace');
-
+        it('returns workDirPath in result without cleaning up workspace (cleanup deferred to success handler)', async () => {
             const handler = convertMediaHandler(storageClient, config);
-            await handler(payload);
+            const result = await handler(payload);
 
-            const { workDirPath } = workspaceSpy.mock.results[0].value;
-            expect(existsSync(workDirPath)).toBe(false);
+            expect(result.workDirPath).toBeTruthy();
+            expect(existsSync(result.workDirPath)).toBe(true);
+            await rm(result.workDirPath, { recursive: true, force: true });
         });
 
-        it('cleans up workspace even when an upload fails', async () => {
-            const workspaceSpy = jest.spyOn(convertUtils, 'initializeWorkspace');
+        it('throws ConversionFatalError with workDirPath when an upload fails', async () => {
             (storageClient.uploadObjects as jest.Mock).mockImplementation((_bucket, objects: any[]) => {
                 objects?.forEach(obj => obj?.data?.destroy());
                 return Promise.reject(new Error('Upload failed'));
             });
 
             const handler = convertMediaHandler(storageClient, config);
-            await expect(handler(payload)).rejects.toThrow('Upload failed');
+            let caughtError: any;
+            try { await handler(payload); } catch (err) { caughtError = err; }
 
-            const { workDirPath } = workspaceSpy.mock.results[0].value;
-            expect(existsSync(workDirPath)).toBe(false);
+            expect(caughtError).toBeInstanceOf(ConversionFatalError);
+            if (existsSync(caughtError.workDirPath)) {
+                await rm(caughtError.workDirPath, { recursive: true, force: true });
+            }
         });
     });
 
@@ -204,18 +206,12 @@ describe('E2E: Convert Pipeline', () => {
         });
 
         it('patches the MPD with wvtt AdaptationSets for each subtitle', async () => {
-            let mpdContent = '';
-            const cleanupSpy = jest.spyOn(convertUtils, 'cleanupWorkspace').mockImplementationOnce(async (workDirPath) => {
-                const mpdPath = path.join(workDirPath, 'output.mpd');
-                if (existsSync(mpdPath)) {
-                    mpdContent = readFileSync(mpdPath, 'utf-8');
-                }
-                return rm(workDirPath, { recursive: true, force: true });
-            });
-
             const handler = convertMediaHandler(storageClient, config);
-            await handler(payload);
-            cleanupSpy.mockRestore();
+            const result = await handler(payload);
+
+            const mpdPath = path.join(result.workDirPath, 'output.mpd');
+            const mpdContent = existsSync(mpdPath) ? readFileSync(mpdPath, 'utf-8') : '';
+            await rm(result.workDirPath, { recursive: true, force: true });
 
             expect(mpdContent).toContain('contentType="text"');
             expect(mpdContent).toContain('codecs="wvtt"');
@@ -255,18 +251,12 @@ describe('E2E: Convert Pipeline', () => {
         });
 
         it('generates a chapters.vtt file with correct WebVTT content', async () => {
-            let chaptersVttContent = '';
-            const cleanupSpy = jest.spyOn(convertUtils, 'cleanupWorkspace').mockImplementationOnce(async (workDirPath) => {
-                const chaptersPath = path.join(workDirPath, 'chapters.vtt');
-                if (existsSync(chaptersPath)) {
-                    chaptersVttContent = readFileSync(chaptersPath, 'utf-8');
-                }
-                return rm(workDirPath, { recursive: true, force: true });
-            });
-
             const handler = convertMediaHandler(storageClient, config);
-            await handler(payload);
-            cleanupSpy.mockRestore();
+            const result = await handler(payload);
+
+            const chaptersPath = path.join(result.workDirPath, 'chapters.vtt');
+            const chaptersVttContent = existsSync(chaptersPath) ? readFileSync(chaptersPath, 'utf-8') : '';
+            await rm(result.workDirPath, { recursive: true, force: true });
 
             expect(chaptersVttContent).toContain('WEBVTT');
             expect(chaptersVttContent).toContain('00:00:00.000 --> 00:05:00.000');

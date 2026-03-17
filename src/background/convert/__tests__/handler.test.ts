@@ -1,5 +1,6 @@
 import { Readable } from 'stream';
-import { StorageClient } from '@ido_kawaz/storage-client';
+import { StorageClient, StorageError } from '@ido_kawaz/storage-client';
+import { ConversionFatalError, ConversionRetriableError } from '../errors';
 import { convertMediaHandler } from '../handler';
 import { ConvertConfig, VideoMetadata, WorkPaths } from '../types';
 
@@ -163,13 +164,13 @@ describe('convertMediaHandler', () => {
 
     it('should call steps in correct order', async () => {
         const callOrder: string[] = [];
-        (mockStorageClient.downloadObject as jest.Mock).mockImplementation(async () => {
-            callOrder.push('download');
-            return mockMediaStream;
-        });
         mockedInitializeWorkspace.mockImplementation(() => {
             callOrder.push('initWorkspace');
             return mockWorkPaths;
+        });
+        (mockStorageClient.downloadObject as jest.Mock).mockImplementation(async () => {
+            callOrder.push('download');
+            return mockMediaStream;
         });
         mockedWriteMedia.mockImplementation(async () => { callOrder.push('writeMedia'); });
         mockedGetVideoMetadata.mockImplementation(async () => { callOrder.push('getVideoMetadata'); return mockVideo; });
@@ -178,45 +179,60 @@ describe('convertMediaHandler', () => {
         mockedConvertMedia.mockImplementation(async () => { callOrder.push('convert'); });
         mockedAddSubtitlesToMpd.mockImplementation(async () => { callOrder.push('addSubtitlesToMpd'); });
         mockedUploadStream.mockImplementation(async () => { callOrder.push('upload'); });
-        mockedCleanup.mockImplementation(async () => { callOrder.push('cleanup'); });
 
         const handler = convertMediaHandler(mockStorageClient, config);
         await handler(basePayload);
 
-        expect(callOrder).toEqual(['download', 'initWorkspace', 'writeMedia', 'getVideoMetadata', 'generateSubtitles', 'generateChapters', 'convert', 'addSubtitlesToMpd', 'upload', 'cleanup']);
+        expect(callOrder).toEqual(['initWorkspace', 'download', 'writeMedia', 'getVideoMetadata', 'generateSubtitles', 'generateChapters', 'convert', 'addSubtitlesToMpd', 'upload']);
     });
 
-    it('should cleanup workspace even when conversion fails', async () => {
+    it('should return videoMetadata and workDirPath on success', async () => {
+        const handler = convertMediaHandler(mockStorageClient, config);
+        const result = await handler(basePayload);
+
+        expect(result).toEqual({ videoMetadata: mockVideo, workDirPath: mockWorkPaths.workDirPath });
+    });
+
+    it('should throw ConversionFatalError with workDirPath when conversion fails', async () => {
         mockedConvertMedia.mockRejectedValue(new Error('FFmpeg failure'));
 
         const handler = convertMediaHandler(mockStorageClient, config);
-        await expect(handler(basePayload)).rejects.toThrow('FFmpeg failure');
-
-        expect(mockedCleanup).toHaveBeenCalledWith(mockWorkPaths.workDirPath);
+        await expect(handler(basePayload)).rejects.toBeInstanceOf(ConversionFatalError);
+        await expect(handler(basePayload)).rejects.toMatchObject({ workDirPath: mockWorkPaths.workDirPath });
+        expect(mockedCleanup).not.toHaveBeenCalled();
     });
 
-    it('should cleanup workspace even when upload fails', async () => {
+    it('should throw ConversionFatalError with workDirPath when upload fails', async () => {
         mockedUploadStream.mockRejectedValue(new Error('Upload error'));
 
         const handler = convertMediaHandler(mockStorageClient, config);
-        await expect(handler(basePayload)).rejects.toThrow('Upload error');
-
-        expect(mockedCleanup).toHaveBeenCalledWith(mockWorkPaths.workDirPath);
+        await expect(handler(basePayload)).rejects.toBeInstanceOf(ConversionFatalError);
+        await expect(handler(basePayload)).rejects.toMatchObject({ workDirPath: mockWorkPaths.workDirPath });
+        expect(mockedCleanup).not.toHaveBeenCalled();
     });
 
-    it('should cleanup workspace even when metadata extraction fails', async () => {
+    it('should throw ConversionFatalError with workDirPath when metadata extraction fails', async () => {
         mockedGetVideoMetadata.mockRejectedValue(new Error('Probe error'));
 
         const handler = convertMediaHandler(mockStorageClient, config);
-        await expect(handler(basePayload)).rejects.toThrow('Probe error');
-
-        expect(mockedCleanup).toHaveBeenCalledWith(mockWorkPaths.workDirPath);
+        await expect(handler(basePayload)).rejects.toBeInstanceOf(ConversionFatalError);
+        await expect(handler(basePayload)).rejects.toMatchObject({ workDirPath: mockWorkPaths.workDirPath });
+        expect(mockedCleanup).not.toHaveBeenCalled();
     });
 
-    it('should propagate storage download error', async () => {
-        (mockStorageClient.downloadObject as jest.Mock).mockRejectedValue(new Error('Storage unavailable'));
+    it('should throw ConversionFatalError when a non-storage download error occurs', async () => {
+        (mockStorageClient.downloadObject as jest.Mock).mockRejectedValue(new Error('Unexpected failure'));
 
         const handler = convertMediaHandler(mockStorageClient, config);
-        await expect(handler(basePayload)).rejects.toThrow('Storage unavailable');
+        await expect(handler(basePayload)).rejects.toBeInstanceOf(ConversionFatalError);
+        await expect(handler(basePayload)).rejects.toMatchObject({ workDirPath: mockWorkPaths.workDirPath });
+    });
+
+    it('should throw ConversionRetriableError when a StorageError occurs', async () => {
+        const storageErr = Object.setPrototypeOf(new Error('Bucket unavailable'), StorageError.prototype);
+        (mockStorageClient.downloadObject as jest.Mock).mockRejectedValue(storageErr);
+
+        const handler = convertMediaHandler(mockStorageClient, config);
+        await expect(handler(basePayload)).rejects.toBeInstanceOf(ConversionRetriableError);
     });
 });

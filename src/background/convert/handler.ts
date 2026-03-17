@@ -1,14 +1,16 @@
 import { AmqpClient } from "@ido_kawaz/amqp-client";
-import { StorageClient } from "@ido_kawaz/storage-client";
+import { StorageClient, StorageError } from "@ido_kawaz/storage-client";
 import { isNotEmpty } from "ramda";
-import { Convert, ConvertConfig, Video, VideoMetadata } from "./types";
+import { ConversionFatalError, ConversionRetriableError } from "./errors";
+import { Convert, ConvertConfig, Video } from "./types";
 import { addSubtitlesToMpd, cleanupWorkspace, convertMediaToDashStream, generateChaptersTrack, generateSubtitleTracks, getVideoMetadata, initializeWorkspace, uploadStreamToStorage, writeMediaToDirectory } from "./utils";
 
 export const convertMediaHandler = (storageClient: StorageClient, config: ConvertConfig) =>
-    async ({ mediaStorageBucket, mediaRoutingKey, mediaName, mediaId }: Convert) => {
-        const mediaStream = await storageClient.downloadObject(mediaStorageBucket, mediaRoutingKey);
+    async (payload: Convert) => {
+        const { mediaStorageBucket, mediaRoutingKey, mediaName, mediaId } = payload
         const { workDirPath, mediaPath, mpdPath } = initializeWorkspace(mediaId, mediaName);
         try {
+            const mediaStream = await storageClient.downloadObject(mediaStorageBucket, mediaRoutingKey);
             await writeMediaToDirectory(mediaStream, mediaPath);
             const videoMetadata = await getVideoMetadata(mediaPath);
             const subtitlePaths = await generateSubtitleTracks(videoMetadata.subtitleStreams, workDirPath, mediaPath);
@@ -16,14 +18,21 @@ export const convertMediaHandler = (storageClient: StorageClient, config: Conver
             await convertMediaToDashStream(mediaPath, mpdPath, videoMetadata);
             await addSubtitlesToMpd(mpdPath, subtitlePaths, videoMetadata.subtitleStreams);
             await uploadStreamToStorage(storageClient, mediaId, workDirPath, config);
-            return videoMetadata
-        } finally {
-            await cleanupWorkspace(workDirPath);
+            return { videoMetadata, workDirPath };
+        } catch (err) {
+            const error = err as Error;
+            if (error instanceof StorageError) {
+                throw new ConversionRetriableError(payload, error, 3, workDirPath);
+            } else {
+                throw new ConversionFatalError(payload, error, workDirPath);
+            }
         }
     };
 
+export type ConvertHandlerSuccessResult = Awaited<ReturnType<ReturnType<typeof convertMediaHandler>>>;
+
 export const onConvertSuccessHandler = (amqpClient: AmqpClient) =>
-    async ({ mediaId }: Convert, videoMetadata: VideoMetadata) => {
+    async ({ mediaId }: Convert, { videoMetadata, workDirPath }: ConvertHandlerSuccessResult) => {
         const video: Video = {
             id: mediaId,
             playUrl: `${mediaId}/output.mpd`,
@@ -31,5 +40,5 @@ export const onConvertSuccessHandler = (amqpClient: AmqpClient) =>
             ...videoMetadata
         }
         amqpClient.publish('register', 'register.media', { video });
-    }
-
+        await cleanupWorkspace(workDirPath);
+    };

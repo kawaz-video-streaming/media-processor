@@ -45,13 +45,12 @@ This is a headless async media processing service. The HTTP server exists only f
 **Media conversion pipeline** (`src/background/convert/`):
 1. Receive AMQP message on queue `media-processor-convert` (exchange: `convert`, topic: `convert.media`)
 2. Validate payload with Zod — `mediaId` (MongoDB ObjectId), `mediaName`, `mediaStorageBucket`, `mediaRoutingKey`
-3. Download source media from S3 via `storageClient.downloadObject` (in `handler.ts`)
-4. Create isolated `tmp/<mediaName>-<random>/` workspace; write media stream to disk
-5. Probe media with FFprobe (`getVideoMetadata`) to extract video/audio/subtitle streams, chapters, and duration; throws `NonVideoMediaError` if no video stream found
-6. Extract any detected ASS subtitle streams as `.vtt` files with FFmpeg
-7. Convert to MPEG-DASH with FFmpeg (`-f dash`, 15s segments, copies video/audio streams without re-encoding); source file and subtitle inputs deleted from workspace after conversion
-8. Upload all workspace files to VOD S3 bucket under `<mediaName-no-ext>/` key prefix via `storageClient.uploadObjects` (bulk upload)
-9. `finally`: delete workspace directory regardless of success or failure
+3. Create isolated `tmp/<mediaName>-<random>/` workspace; download source media from S3 via `storageClient.downloadObject` and write to disk
+4. Probe media with FFprobe (`getVideoMetadata`) to extract video/audio/subtitle streams, chapters, and duration; throws `NonVideoMediaError` if no video stream found
+5. Extract any detected ASS subtitle streams as `.vtt` files with FFmpeg
+6. Convert to MPEG-DASH with FFmpeg (`-f dash`, 15s segments, copies video/audio streams without re-encoding); source file and subtitle inputs deleted from workspace after conversion
+7. Upload all workspace files to VOD S3 bucket under `<mediaName-no-ext>/` key prefix via `storageClient.uploadObjects` (bulk upload)
+8. On success: `onConvertSuccessHandler` publishes to `register.media` and deletes the workspace. On `StorageError`: throws `ConversionRetriableError` (AMQP retries, workspace cleaned up by `handleRetriableError` hook). On any other error: throws `ConversionFatalError` (message marked failed via `progress.media`, workspace cleaned up by `handleFatalError` hook). Both error classes carry `workDirPath` for deferred cleanup.
 
 **Key directories:**
 - `src/background/convert/` — entire conversion consumer: `handler.ts` orchestrates, `utils.ts` implements each step, `types.ts` has Zod schema + interfaces, `errors.ts` has domain errors, `binding.ts` has AMQP queue/exchange/topic constants
