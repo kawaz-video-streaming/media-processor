@@ -44,7 +44,7 @@ export interface VideoMetadata {
 }
 
 export interface Video extends VideoMetadata {
-    id: string;
+    _id: string;
     playUrl: string;
     chaptersUrl?: string;
 }

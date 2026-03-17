@@ -34,7 +34,7 @@ export type ConvertHandlerSuccessResult = Awaited<ReturnType<ReturnType<typeof c
 export const onConvertSuccessHandler = (amqpClient: AmqpClient) =>
     async ({ mediaId }: Convert, { videoMetadata, workDirPath }: ConvertHandlerSuccessResult) => {
         const video: Video = {
-            id: mediaId,
+            _id: mediaId,
             playUrl: `${mediaId}/output.mpd`,
             ...(isNotEmpty(videoMetadata.chapters) ? { chaptersUrl: `${mediaId}/chapters.vtt` } : {}),
             ...videoMetadata
