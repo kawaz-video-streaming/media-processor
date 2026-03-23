@@ -1,6 +1,6 @@
 import { StorageClient } from '@ido_kawaz/storage-client';
 import { existsSync, readFileSync } from 'fs';
-import { rm, writeFile } from 'fs/promises';
+import { writeFile } from 'fs/promises';
 import path from 'path';
 import { Readable } from 'stream';
 import { ConversionFatalError } from '../background/convert/errors';
@@ -84,7 +84,6 @@ describe('E2E: Convert Pipeline', () => {
 
             expect(caughtError).toBeInstanceOf(ConversionFatalError);
             expect(existsSync(caughtError.workDirPath)).toBe(true);
-            await rm(caughtError.workDirPath, { recursive: true, force: true });
         });
     });
 
@@ -105,10 +104,12 @@ describe('E2E: Convert Pipeline', () => {
                 expect.stringContaining('output.mpd'),
                 [
                     '-f dash',
+                    '-avoid_negative_ts', 'make_zero',
                     '-map 0:v',
                     '-map 0:a?',
-                    '-c:v h264_nvenc',
-                    '-c:a copy',
+                    '-c:v', 'h264',
+                    '-c:a', 'aac',
+                    '-af', 'aresample=async=1:first_pts=0',
                     '-use_template', '1',
                     '-use_timeline', '1',
                     '-seg_duration', '15',
@@ -139,7 +140,6 @@ describe('E2E: Convert Pipeline', () => {
 
             expect(result.workDirPath).toBeTruthy();
             expect(existsSync(result.workDirPath)).toBe(true);
-            await rm(result.workDirPath, { recursive: true, force: true });
         });
 
         it('throws ConversionFatalError with workDirPath when an upload fails', async () => {
@@ -153,9 +153,6 @@ describe('E2E: Convert Pipeline', () => {
             try { await handler(payload); } catch (err) { caughtError = err; }
 
             expect(caughtError).toBeInstanceOf(ConversionFatalError);
-            if (existsSync(caughtError.workDirPath)) {
-                await rm(caughtError.workDirPath, { recursive: true, force: true });
-            }
         });
     });
 
@@ -187,10 +184,12 @@ describe('E2E: Convert Pipeline', () => {
             const dashCall = mockedRunFfmpeg.mock.calls.find(([, out]) => out.endsWith('.mpd'));
             expect(dashCall![2]).toEqual([
                 '-f dash',
+                '-avoid_negative_ts', 'make_zero',
                 '-map 0:v',
                 '-map 0:a?',
-                '-c:v h264_nvenc',
-                '-c:a copy',
+                '-c:v', 'h264',
+                '-c:a', 'aac',
+                '-af', 'aresample=async=1:first_pts=0',
                 '-use_template', '1',
                 '-use_timeline', '1',
                 '-seg_duration', '15',
@@ -211,7 +210,6 @@ describe('E2E: Convert Pipeline', () => {
 
             const mpdPath = path.join(result.workDirPath, 'output.mpd');
             const mpdContent = existsSync(mpdPath) ? readFileSync(mpdPath, 'utf-8') : '';
-            await rm(result.workDirPath, { recursive: true, force: true });
 
             expect(mpdContent).toContain('contentType="text"');
             expect(mpdContent).toContain('codecs="wvtt"');
@@ -256,7 +254,6 @@ describe('E2E: Convert Pipeline', () => {
 
             const chaptersPath = path.join(result.workDirPath, 'chapters.vtt');
             const chaptersVttContent = existsSync(chaptersPath) ? readFileSync(chaptersPath, 'utf-8') : '';
-            await rm(result.workDirPath, { recursive: true, force: true });
 
             expect(chaptersVttContent).toContain('WEBVTT');
             expect(chaptersVttContent).toContain('00:00:00.000 --> 00:05:00.000');

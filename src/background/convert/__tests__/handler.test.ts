@@ -1,48 +1,28 @@
-import { Readable } from 'stream';
+import { AmqpClient } from '@ido_kawaz/amqp-client';
 import { StorageClient, StorageError } from '@ido_kawaz/storage-client';
 import { ConversionFatalError, ConversionRetriableError } from '../errors';
-import { convertMediaHandler } from '../handler';
+import { convertMediaHandler, onConvertSuccessHandler } from '../handler';
 import { ConvertConfig, VideoMetadata, WorkPaths } from '../types';
 
 jest.mock('../utils', () => ({
     initializeWorkspace: jest.fn(),
-    writeMediaToDirectory: jest.fn(),
-    getVideoMetadata: jest.fn(),
-    generateSubtitleTracks: jest.fn(),
-    generateChaptersTrack: jest.fn(),
-    convertMediaToDashStream: jest.fn(),
-    addSubtitlesToMpd: jest.fn(),
-    uploadStreamToStorage: jest.fn(),
     cleanupWorkspace: jest.fn()
 }));
 
-import {
-    initializeWorkspace,
-    writeMediaToDirectory,
-    getVideoMetadata,
-    generateSubtitleTracks,
-    generateChaptersTrack,
-    convertMediaToDashStream,
-    addSubtitlesToMpd,
-    uploadStreamToStorage,
-    cleanupWorkspace
-} from '../utils';
+jest.mock('../logic', () => ({
+    convertMedia: jest.fn()
+}));
+
+import { initializeWorkspace, cleanupWorkspace } from '../utils';
+import * as logic from '../logic';
 
 const mockedInitializeWorkspace = initializeWorkspace as jest.MockedFunction<typeof initializeWorkspace>;
-const mockedWriteMedia = writeMediaToDirectory as jest.MockedFunction<typeof writeMediaToDirectory>;
-const mockedGetVideoMetadata = getVideoMetadata as jest.MockedFunction<typeof getVideoMetadata>;
-const mockedGenerateSubtitleTracks = generateSubtitleTracks as jest.MockedFunction<typeof generateSubtitleTracks>;
-const mockedGenerateChaptersTrack = generateChaptersTrack as jest.MockedFunction<typeof generateChaptersTrack>;
-const mockedConvertMedia = convertMediaToDashStream as jest.MockedFunction<typeof convertMediaToDashStream>;
-const mockedAddSubtitlesToMpd = addSubtitlesToMpd as jest.MockedFunction<typeof addSubtitlesToMpd>;
-const mockedUploadStream = uploadStreamToStorage as jest.MockedFunction<typeof uploadStreamToStorage>;
 const mockedCleanup = cleanupWorkspace as jest.MockedFunction<typeof cleanupWorkspace>;
+const mockedConvertMedia = logic.convertMedia as jest.MockedFunction<typeof logic.convertMedia>;
 
 describe('convertMediaHandler', () => {
-    const mockMediaStream = new Readable({ read() { this.push(null); } });
-
     const mockStorageClient = {
-        downloadObject: jest.fn().mockResolvedValue(mockMediaStream),
+        downloadObject: jest.fn(),
         uploadObject: jest.fn(),
         ensureBucket: jest.fn()
     } as unknown as StorageClient;
@@ -59,7 +39,7 @@ describe('convertMediaHandler', () => {
 
     const mockVideo: VideoMetadata = {
         title: 'video',
-        duration: 0,
+        durationInMs: 0,
         chapters: [],
         videoStreams: [],
         audioStreams: [],
@@ -75,115 +55,22 @@ describe('convertMediaHandler', () => {
 
     beforeEach(() => {
         mockedInitializeWorkspace.mockReturnValue(mockWorkPaths);
-        mockedWriteMedia.mockResolvedValue(undefined);
-        mockedGetVideoMetadata.mockResolvedValue(mockVideo);
-        mockedGenerateSubtitleTracks.mockResolvedValue([]);
-        mockedGenerateChaptersTrack.mockResolvedValue(undefined);
-        mockedConvertMedia.mockResolvedValue(undefined);
-        mockedAddSubtitlesToMpd.mockResolvedValue(undefined);
-        mockedUploadStream.mockResolvedValue(undefined);
+        mockedConvertMedia.mockResolvedValue(mockVideo);
         mockedCleanup.mockResolvedValue(undefined);
     });
 
-    it('should download media from storage with correct bucket and key', async () => {
+    it('should initialize workspace with the convert payload', async () => {
         const handler = convertMediaHandler(mockStorageClient, config);
         await handler(basePayload);
 
-        expect(mockStorageClient.downloadObject).toHaveBeenCalledWith('raw-bucket', 'media/video.mp4');
+        expect(mockedInitializeWorkspace).toHaveBeenCalledWith(basePayload);
     });
 
-    it('should initialize workspace with media name', async () => {
+    it('should call logic.convertMedia with correct arguments', async () => {
         const handler = convertMediaHandler(mockStorageClient, config);
         await handler(basePayload);
 
-        expect(mockedInitializeWorkspace).toHaveBeenCalledWith('507f1f77bcf86cd799439011', 'video.mp4');
-    });
-
-    it('should write downloaded media stream to workspace directory', async () => {
-        const handler = convertMediaHandler(mockStorageClient, config);
-        await handler(basePayload);
-
-        expect(mockedWriteMedia).toHaveBeenCalledWith(mockMediaStream, mockWorkPaths.mediaPath);
-    });
-
-    it('should probe media to extract video metadata', async () => {
-        const handler = convertMediaHandler(mockStorageClient, config);
-        await handler(basePayload);
-
-        expect(mockedGetVideoMetadata).toHaveBeenCalledWith(mockWorkPaths.mediaPath);
-    });
-
-    it('should generate subtitle tracks from video metadata', async () => {
-        const handler = convertMediaHandler(mockStorageClient, config);
-        await handler(basePayload);
-
-        expect(mockedGenerateSubtitleTracks).toHaveBeenCalledWith(
-            mockVideo.subtitleStreams,
-            mockWorkPaths.workDirPath,
-            mockWorkPaths.mediaPath
-        );
-    });
-
-    it('should convert media to DASH stream with media path and mpd path', async () => {
-        const handler = convertMediaHandler(mockStorageClient, config);
-        await handler(basePayload);
-
-        expect(mockedConvertMedia).toHaveBeenCalledWith(
-            mockWorkPaths.mediaPath,
-            mockWorkPaths.mpdPath,
-            mockVideo
-        );
-    });
-
-    it('should patch MPD with subtitle tracks after DASH conversion', async () => {
-        const mockSubtitlePaths = ['/tmp/video-abc123/subtitles_0_eng.vtt'];
-        mockedGenerateSubtitleTracks.mockResolvedValue(mockSubtitlePaths);
-
-        const handler = convertMediaHandler(mockStorageClient, config);
-        await handler(basePayload);
-
-        expect(mockedAddSubtitlesToMpd).toHaveBeenCalledWith(
-            mockWorkPaths.mpdPath,
-            mockSubtitlePaths,
-            mockVideo.subtitleStreams
-        );
-    });
-
-
-    it('should upload converted stream to storage', async () => {
-        const handler = convertMediaHandler(mockStorageClient, config);
-        await handler(basePayload);
-
-        expect(mockedUploadStream).toHaveBeenCalledWith(
-            mockStorageClient,
-            '507f1f77bcf86cd799439011',
-            mockWorkPaths.workDirPath,
-            config
-        );
-    });
-
-    it('should call steps in correct order', async () => {
-        const callOrder: string[] = [];
-        mockedInitializeWorkspace.mockImplementation(() => {
-            callOrder.push('initWorkspace');
-            return mockWorkPaths;
-        });
-        (mockStorageClient.downloadObject as jest.Mock).mockImplementation(async () => {
-            callOrder.push('download');
-            return mockMediaStream;
-        });
-        mockedWriteMedia.mockImplementation(async () => { callOrder.push('writeMedia'); });
-        mockedGetVideoMetadata.mockImplementation(async () => { callOrder.push('getVideoMetadata'); return mockVideo; });
-        mockedGenerateSubtitleTracks.mockImplementation(async () => { callOrder.push('generateSubtitles'); return []; });
-        mockedGenerateChaptersTrack.mockImplementation(async () => { callOrder.push('generateChapters'); });
-        mockedConvertMedia.mockImplementation(async () => { callOrder.push('convert'); });
-        mockedAddSubtitlesToMpd.mockImplementation(async () => { callOrder.push('addSubtitlesToMpd'); });
-        mockedUploadStream.mockImplementation(async () => { callOrder.push('upload'); });
-
-        const handler = convertMediaHandler(mockStorageClient, config);
-        await handler(basePayload);
-
-        expect(callOrder).toEqual(['initWorkspace', 'download', 'writeMedia', 'getVideoMetadata', 'generateSubtitles', 'generateChapters', 'convert', 'addSubtitlesToMpd', 'upload']);
+        expect(mockedConvertMedia).toHaveBeenCalledWith(config, mockStorageClient, basePayload, mockWorkPaths);
     });
 
     it('should return videoMetadata and workDirPath on success', async () => {
@@ -193,7 +80,7 @@ describe('convertMediaHandler', () => {
         expect(result).toEqual({ videoMetadata: mockVideo, workDirPath: mockWorkPaths.workDirPath });
     });
 
-    it('should throw ConversionFatalError with workDirPath when conversion fails', async () => {
+    it('should throw ConversionFatalError with workDirPath when logic.convertMedia fails', async () => {
         mockedConvertMedia.mockRejectedValue(new Error('FFmpeg failure'));
 
         const handler = convertMediaHandler(mockStorageClient, config);
@@ -202,37 +89,102 @@ describe('convertMediaHandler', () => {
         expect(mockedCleanup).not.toHaveBeenCalled();
     });
 
-    it('should throw ConversionFatalError with workDirPath when upload fails', async () => {
-        mockedUploadStream.mockRejectedValue(new Error('Upload error'));
-
-        const handler = convertMediaHandler(mockStorageClient, config);
-        await expect(handler(basePayload)).rejects.toBeInstanceOf(ConversionFatalError);
-        await expect(handler(basePayload)).rejects.toMatchObject({ workDirPath: mockWorkPaths.workDirPath });
-        expect(mockedCleanup).not.toHaveBeenCalled();
-    });
-
-    it('should throw ConversionFatalError with workDirPath when metadata extraction fails', async () => {
-        mockedGetVideoMetadata.mockRejectedValue(new Error('Probe error'));
-
-        const handler = convertMediaHandler(mockStorageClient, config);
-        await expect(handler(basePayload)).rejects.toBeInstanceOf(ConversionFatalError);
-        await expect(handler(basePayload)).rejects.toMatchObject({ workDirPath: mockWorkPaths.workDirPath });
-        expect(mockedCleanup).not.toHaveBeenCalled();
-    });
-
-    it('should throw ConversionFatalError when a non-storage download error occurs', async () => {
-        (mockStorageClient.downloadObject as jest.Mock).mockRejectedValue(new Error('Unexpected failure'));
-
-        const handler = convertMediaHandler(mockStorageClient, config);
-        await expect(handler(basePayload)).rejects.toBeInstanceOf(ConversionFatalError);
-        await expect(handler(basePayload)).rejects.toMatchObject({ workDirPath: mockWorkPaths.workDirPath });
-    });
-
     it('should throw ConversionRetriableError when a StorageError occurs', async () => {
         const storageErr = Object.setPrototypeOf(new Error('Bucket unavailable'), StorageError.prototype);
-        (mockStorageClient.downloadObject as jest.Mock).mockRejectedValue(storageErr);
+        mockedConvertMedia.mockRejectedValue(storageErr);
 
         const handler = convertMediaHandler(mockStorageClient, config);
         await expect(handler(basePayload)).rejects.toBeInstanceOf(ConversionRetriableError);
+    });
+});
+
+describe('onConvertSuccessHandler', () => {
+    const mockAmqpClient = {
+        publish: jest.fn()
+    } as unknown as AmqpClient;
+
+    const basePayload = {
+        mediaId: '507f1f77bcf86cd799439011',
+        mediaName: 'video.mp4',
+        mediaStorageBucket: 'raw-bucket',
+        mediaRoutingKey: 'media/video.mp4'
+    };
+
+    const baseMetadata: VideoMetadata = {
+        title: 'My Video',
+        durationInMs: 120000,
+        chapters: [],
+        videoStreams: [],
+        audioStreams: [],
+        subtitleStreams: []
+    };
+
+    beforeEach(() => {
+        mockedCleanup.mockResolvedValue(undefined);
+    });
+
+    it('publishes video object to register.media with correct playUrl and _id', async () => {
+        const handler = onConvertSuccessHandler(mockAmqpClient);
+        await handler(basePayload, { videoMetadata: baseMetadata, workDirPath: '/tmp/abc' });
+
+        expect(mockAmqpClient.publish).toHaveBeenCalledWith(
+            'register',
+            'register.media',
+            expect.objectContaining({
+                video: expect.objectContaining({
+                    _id: '507f1f77bcf86cd799439011',
+                    playUrl: '507f1f77bcf86cd799439011/output.mpd'
+                })
+            })
+        );
+    });
+
+    it('omits chaptersUrl and chapters when chapters array is empty', async () => {
+        const handler = onConvertSuccessHandler(mockAmqpClient);
+        await handler(basePayload, { videoMetadata: baseMetadata, workDirPath: '/tmp/abc' });
+
+        const { video } = (mockAmqpClient.publish as jest.Mock).mock.calls[0][2];
+        expect(video).not.toHaveProperty('chaptersUrl');
+        expect(video).not.toHaveProperty('chapters');
+    });
+
+    it('includes chaptersUrl and chapters when chapters are present', async () => {
+        const metadataWithChapters: VideoMetadata = {
+            ...baseMetadata,
+            chapters: [{ chapterName: 'Intro', chapterStartTime: 0, chapterEndTime: 30000 }]
+        };
+
+        const handler = onConvertSuccessHandler(mockAmqpClient);
+        await handler(basePayload, { videoMetadata: metadataWithChapters, workDirPath: '/tmp/abc' });
+
+        const { video } = (mockAmqpClient.publish as jest.Mock).mock.calls[0][2];
+        expect(video.chaptersUrl).toBe('507f1f77bcf86cd799439011/chapters.vtt');
+        expect(video.chapters).toEqual(metadataWithChapters.chapters);
+    });
+
+    it('strips index from subtitle streams', async () => {
+        const metadataWithSubtitles: VideoMetadata = {
+            ...baseMetadata,
+            subtitleStreams: [
+                { index: 2, language: 'eng', title: 'English', durationInMs: 120000 },
+                { index: 5, language: 'fra', title: 'French', durationInMs: 120000 }
+            ]
+        };
+
+        const handler = onConvertSuccessHandler(mockAmqpClient);
+        await handler(basePayload, { videoMetadata: metadataWithSubtitles, workDirPath: '/tmp/abc' });
+
+        const { video } = (mockAmqpClient.publish as jest.Mock).mock.calls[0][2];
+        expect(video.subtitleStreams).toEqual([
+            { language: 'eng', title: 'English', durationInMs: 120000 },
+            { language: 'fra', title: 'French', durationInMs: 120000 }
+        ]);
+    });
+
+    it('cleans up workspace after publishing', async () => {
+        const handler = onConvertSuccessHandler(mockAmqpClient);
+        await handler(basePayload, { videoMetadata: baseMetadata, workDirPath: '/tmp/abc' });
+
+        expect(mockedCleanup).toHaveBeenCalledWith('/tmp/abc');
     });
 });

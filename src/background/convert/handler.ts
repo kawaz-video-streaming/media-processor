@@ -1,23 +1,17 @@
 import { AmqpClient } from "@ido_kawaz/amqp-client";
 import { StorageClient, StorageError } from "@ido_kawaz/storage-client";
-import { isNotEmpty } from "ramda";
+import { isNotEmpty, omit } from "ramda";
 import { ConversionFatalError, ConversionRetriableError } from "./errors";
+import * as logic from "./logic";
 import { Convert, ConvertConfig, Video } from "./types";
-import { addSubtitlesToMpd, cleanupWorkspace, convertMediaToDashStream, generateChaptersTrack, generateSubtitleTracks, getVideoMetadata, initializeWorkspace, uploadStreamToStorage, writeMediaToDirectory } from "./utils";
+import { cleanupWorkspace, initializeWorkspace } from "./utils";
 
 export const convertMediaHandler = (storageClient: StorageClient, config: ConvertConfig) =>
     async (payload: Convert) => {
-        const { mediaStorageBucket, mediaRoutingKey, mediaName, mediaId } = payload
-        const { workDirPath, mediaPath, mpdPath } = initializeWorkspace(mediaId, mediaName);
+        const workPaths = initializeWorkspace(payload);
+        const { workDirPath } = workPaths;
         try {
-            const mediaStream = await storageClient.downloadObject(mediaStorageBucket, mediaRoutingKey);
-            await writeMediaToDirectory(mediaStream, mediaPath);
-            const videoMetadata = await getVideoMetadata(mediaPath);
-            const subtitlePaths = await generateSubtitleTracks(videoMetadata.subtitleStreams, workDirPath, mediaPath);
-            await generateChaptersTrack(videoMetadata.chapters, workDirPath);
-            await convertMediaToDashStream(mediaPath, mpdPath, videoMetadata);
-            await addSubtitlesToMpd(mpdPath, subtitlePaths, videoMetadata.subtitleStreams);
-            await uploadStreamToStorage(storageClient, mediaId, workDirPath, config);
+            const videoMetadata = await logic.convertMedia(config, storageClient, payload, workPaths);
             return { videoMetadata, workDirPath };
         } catch (err) {
             const error = err as Error;
@@ -36,8 +30,12 @@ export const onConvertSuccessHandler = (amqpClient: AmqpClient) =>
         const video: Video = {
             _id: mediaId,
             playUrl: `${mediaId}/output.mpd`,
-            ...(isNotEmpty(videoMetadata.chapters) ? { chaptersUrl: `${mediaId}/chapters.vtt` } : {}),
-            ...videoMetadata
+            ...(isNotEmpty(videoMetadata.chapters) ?
+                { chaptersUrl: `${mediaId}/chapters.vtt`, chapters: videoMetadata.chapters }
+                : {}
+            ),
+            subtitleStreams: videoMetadata.subtitleStreams.map(omit(['index'])),
+            ...omit(['chapters', 'subtitleStreams'], videoMetadata)
         }
         amqpClient.publish('register', 'register.media', { video });
         await cleanupWorkspace(workDirPath);

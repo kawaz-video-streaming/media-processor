@@ -19,8 +19,8 @@ describe('getVideoChapters', () => {
         } as any);
 
         expect(result).toEqual([
-            { chapterName: 'Intro', chapterStartTime: 0, chapterEndTime: 30 },
-            { chapterName: 'Main', chapterStartTime: 30, chapterEndTime: 120 }
+            { chapterName: 'Intro', chapterStartTime: 0, chapterEndTime: 30000 },
+            { chapterName: 'Main', chapterStartTime: 30000, chapterEndTime: 120000 }
         ]);
     });
 
@@ -29,7 +29,7 @@ describe('getVideoChapters', () => {
             chapters: [{ tags: {}, start_time: 0, end_time: 10 }]
         } as any);
 
-        expect(result[0].chapterName).toBe('Chapter');
+        expect(result[0].chapterName).toBe('Chapter 1');
     });
 
     it('defaults start and end times to 0 when missing', () => {
@@ -80,7 +80,7 @@ describe('getVideoMetadata', () => {
 
     it('sets duration from format.duration', async () => {
         const video = await getVideoMetadata(MEDIA_PATH);
-        expect(video.duration).toBe(120);
+        expect(video.durationInMs).toBe(120000);
     });
 
     it('throws NonVideoMediaError when there are no video streams', async () => {
@@ -103,20 +103,22 @@ describe('getVideoMetadata', () => {
         await expect(getVideoMetadata(MEDIA_PATH)).rejects.toThrow(NonVideoMediaError);
     });
 
-    it('only includes subtitle streams with codec_name "ass"', async () => {
+    it('includes subtitle streams with codec_name "ass", "subrip", or "vtt"', async () => {
         mockedRunFfprobe.mockResolvedValue({
             format: { tags: {}, duration: 0 },
             chapters: [],
             streams: [
                 { codec_type: 'video', tags: {} },
                 { codec_type: 'subtitle', codec_name: 'ass', index: 1, tags: { language: 'eng' } },
-                { codec_type: 'subtitle', codec_name: 'subrip', index: 2, tags: { language: 'fra' } }
+                { codec_type: 'subtitle', codec_name: 'subrip', index: 2, tags: { language: 'fra' } },
+                { codec_type: 'subtitle', codec_name: 'dvd_subtitle', index: 3, tags: { language: 'deu' } }
             ]
         } as any);
 
         const video = await getVideoMetadata(MEDIA_PATH);
-        expect(video.subtitleStreams).toHaveLength(1);
+        expect(video.subtitleStreams).toHaveLength(2);
         expect(video.subtitleStreams[0].language).toBe('eng');
+        expect(video.subtitleStreams[1].language).toBe('fra');
     });
 
     it('uses actual FFprobe stream index for subtitle index', async () => {

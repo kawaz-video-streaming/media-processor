@@ -14,39 +14,38 @@ export interface VideoChapter {
     chapterEndTime: number;
 }
 
-export interface VideoStream {
-    codec: string;
+interface stream {
     title: string;
-    duration: number;
+    durationInMs: number;
 }
 
-export interface AudioStream {
-    codec: string;
+interface languageStream extends stream {
     language: string;
-    title: string;
-    duration: number;
 }
 
-export interface SubtitleStream {
+export interface VideoStream extends stream { }
+
+export interface AudioStream extends languageStream { }
+
+export interface SubtitleStream extends languageStream {
     index: number;
-    language: string;
-    title: string;
-    duration: number;
 }
 
 export interface VideoMetadata {
     title: string;
-    duration: number;
+    durationInMs: number;
     chapters: VideoChapter[];
     videoStreams: VideoStream[];
     audioStreams: AudioStream[];
     subtitleStreams: SubtitleStream[];
 }
 
-export interface Video extends VideoMetadata {
+export interface Video extends Omit<VideoMetadata, 'chapters' | 'subtitleStreams'> {
     _id: string;
     playUrl: string;
     chaptersUrl?: string;
+    chapters?: VideoChapter[];
+    subtitleStreams: Omit<SubtitleStream, 'index'>[];
 }
 
 export interface Convert {

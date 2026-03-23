@@ -2,6 +2,13 @@ import ffmpeg, { FfprobeData } from 'fluent-ffmpeg';
 import { execFile } from 'child_process';
 import { isNotNil } from 'ramda';
 
+export const isEncoderAvailable = (encoder: string): Promise<boolean> =>
+    new Promise(resolve =>
+        execFile('ffmpeg', ['-encoders', '-v', 'quiet'], (_err, stdout) =>
+            resolve(stdout.includes(encoder))
+        )
+    );
+
 export const runFfprobe = (inputPath: string) =>
     new Promise<FfprobeData>((resolve, reject) =>
         execFile('ffprobe', [
