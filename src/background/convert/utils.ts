@@ -70,9 +70,9 @@ export const generateChaptersTrack = async (chapters: VideoChapter[], workDirPat
     await writeFile(chaptersPath, lines.join('\n'), 'utf-8');
 };
 
-const formatDurationInMs = (duration: string | null) => {
-    if (isNil(duration) || typeof duration !== 'string') {
-        return 0;
+const formatDurationInMs = (duration: any) => {
+    if (typeof duration !== 'string' || isNil<string>(duration)) {
+        return undefined;
     }
     const [hours, minutes, seconds] = duration.split(':').map(Number);
     return (hours * 3600 + minutes * 60 + seconds) * 1000;
@@ -81,7 +81,7 @@ const formatDurationInMs = (duration: string | null) => {
 const getVideoStreams = (mediaStreams: FfprobeStream[], defaultVideoTitle: string, defaultVideoDuration: number): VideoStream[] => {
     const videoStreams = mediaStreams.filter(({ codec_type }) => codec_type === 'video').map(stream => ({
         title: stream.tags?.title ?? defaultVideoTitle,
-        durationInMs: formatDurationInMs(stream.tags?.DURATION ?? null) ?? defaultVideoDuration
+        durationInMs: formatDurationInMs(stream.tags?.DURATION) ?? defaultVideoDuration
     }));
     if (isEmpty(videoStreams)) {
         throw new NonVideoMediaError();
@@ -95,7 +95,7 @@ const getAudioStreams = (mediaStreams: FfprobeStream[], defaultAudioDuration: nu
         .map(stream => ({
             title: stream.tags?.title ?? 'Audio',
             language: stream.tags?.language ?? 'und',
-            durationInMs: formatDurationInMs(stream.tags?.DURATION ?? null) ?? defaultAudioDuration
+            durationInMs: formatDurationInMs(stream.tags?.DURATION) ?? defaultAudioDuration
         }));
 
 const getSubtitleStreams = (mediaStreams: FfprobeStream[], defaultSubtitleDuration: number): SubtitleStream[] =>
@@ -105,7 +105,7 @@ const getSubtitleStreams = (mediaStreams: FfprobeStream[], defaultSubtitleDurati
             index: stream.index ?? index,
             language: stream.tags?.language ?? 'und',
             title: stream.tags?.title ?? 'Subtitle',
-            durationInMs: formatDurationInMs(stream.tags?.DURATION ?? null) ?? defaultSubtitleDuration
+            durationInMs: formatDurationInMs(stream.tags?.DURATION) ?? defaultSubtitleDuration
         }));
 
 export const getVideoChapters = (mediaData: FfprobeData): VideoChapter[] => mediaData.chapters.map((chapter, index) => ({
@@ -124,9 +124,11 @@ export const getVideoMetadata = async (mediaPath: string): Promise<VideoMetadata
     const mediaVideoStreams = getVideoStreams(mediaStreams, mediaTitle, mediaDurationInMs);
     const mediaAudioStreams = getAudioStreams(mediaStreams, mediaDurationInMs);
     const mediaSubtitleStreams = getSubtitleStreams(mediaStreams, mediaDurationInMs);
+    const is10bit = mediaStreams.filter(({ codec_type }) => codec_type === 'video').some(({ pix_fmt }) => /10(le|be)/.test(pix_fmt ?? ''));
     return {
         title: mediaTitle,
         durationInMs: mediaDurationInMs,
+        is10bit,
         chapters: mediaChapters,
         videoStreams: mediaVideoStreams,
         audioStreams: mediaAudioStreams,
@@ -135,25 +137,28 @@ export const getVideoMetadata = async (mediaPath: string): Promise<VideoMetadata
 }
 
 
-export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string) => {
+const buildDashOutputOptions = (videoEncoder: string, extraVideoOptions: string[] = []) => [
+    '-f dash',
+    '-avoid_negative_ts', 'make_zero',
+    '-map 0:v',
+    '-map 0:a?',
+    '-c:v', videoEncoder,
+    ...extraVideoOptions,
+    '-c:a', 'aac',
+    '-af', 'aresample=async=1:first_pts=0',
+    '-use_template', '1',
+    '-use_timeline', '1',
+    '-seg_duration', '15',
+    '-init_seg_name', 'init_v$RepresentationID$.m4s',
+    '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
+];
+
+export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string, is10bit: boolean) => {
     const videoEncoder = await isEncoderAvailable('h264_nvenc') ? 'h264_nvenc' : 'h264';
-    await runFfmpeg(mediaPath, mpdPath, [
-        '-f dash',
-        '-avoid_negative_ts', 'make_zero',
-        '-map 0:v',
-        '-map 0:a?',
-        '-c:v', videoEncoder,
-        '-c:a', 'aac',
-        '-af', 'aresample=async=1:first_pts=0',
-        '-use_template', '1',
-        '-use_timeline', '1',
-        '-seg_duration', '15',
-        '-init_seg_name', 'init_v$RepresentationID$.m4s',
-        '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
-    ], true);
+    const extraVideoOptions = videoEncoder === 'h264_nvenc' && is10bit ? ['-pix_fmt', 'yuv420p'] : [];
+    await runFfmpeg(mediaPath, mpdPath, buildDashOutputOptions(videoEncoder, extraVideoOptions), true);
     await unlink(mediaPath);
 }
-
 
 export const addSubtitlesToMpd = async (mpdPath: string, subtitlePaths: string[], subtitleStreams: SubtitleStream[]) => {
     if (isEmpty(subtitlePaths)) {

@@ -83,6 +83,24 @@ describe('getVideoMetadata', () => {
         expect(video.durationInMs).toBe(120000);
     });
 
+    it('sets is10bit to false when pix_fmt does not indicate 10-bit', async () => {
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.is10bit).toBe(false);
+    });
+
+    it('sets is10bit to true when a video stream has a 10-bit pix_fmt', async () => {
+        mockedRunFfprobe.mockResolvedValue({
+            format: { tags: { title: 'My Video' }, duration: 120 },
+            chapters: [],
+            streams: [
+                { codec_type: 'video', pix_fmt: 'yuv420p10le', tags: { DURATION: '00:02:00.000000000' } }
+            ]
+        } as any);
+
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.is10bit).toBe(true);
+    });
+
     it('throws NonVideoMediaError when there are no video streams', async () => {
         mockedRunFfprobe.mockResolvedValue({
             format: { tags: {}, duration: 0 },

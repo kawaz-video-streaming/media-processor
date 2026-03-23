@@ -2,8 +2,8 @@ import { AmqpClient, Consumer } from "@ido_kawaz/amqp-client";
 import { StorageClient } from "@ido_kawaz/storage-client";
 import { ConvertMediaConsumerBinding, createConvertConsumerBinding } from "./binding";
 import { ConversionFatalError, ConversionRetriableError } from "./errors";
-import { ConvertHandlerSuccessResult, convertMediaHandler, onConvertSuccessHandler } from "./handler";
-import { Convert, ConvertConfig, validateConvertPayload } from "./types";
+import { convertMediaHandler, onConvertSuccessHandler } from "./handler";
+import { Convert, ConvertConfig, ConvertHandlerSuccessResult, validateConvertPayload } from "./types";
 import { cleanupWorkspace } from "./utils";
 
 

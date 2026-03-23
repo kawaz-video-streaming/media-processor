@@ -34,19 +34,26 @@ export interface SubtitleStream extends languageStream {
 export interface VideoMetadata {
     title: string;
     durationInMs: number;
+    is10bit: boolean;
     chapters: VideoChapter[];
     videoStreams: VideoStream[];
     audioStreams: AudioStream[];
     subtitleStreams: SubtitleStream[];
 }
 
-export interface Video extends Omit<VideoMetadata, 'chapters' | 'subtitleStreams'> {
+export interface Video extends Omit<VideoMetadata, 'chapters' | 'subtitleStreams' | 'is10bit'> {
     _id: string;
     playUrl: string;
     chaptersUrl?: string;
     chapters?: VideoChapter[];
     subtitleStreams: Omit<SubtitleStream, 'index'>[];
 }
+
+export interface ConvertHandlerSuccessResult {
+    videoMetadata: VideoMetadata;
+    workDirPath: string;
+};
+
 
 export interface Convert {
     mediaId: string;

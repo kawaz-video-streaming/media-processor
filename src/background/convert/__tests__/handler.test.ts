@@ -40,6 +40,7 @@ describe('convertMediaHandler', () => {
     const mockVideo: VideoMetadata = {
         title: 'video',
         durationInMs: 0,
+        is10bit: false,
         chapters: [],
         videoStreams: [],
         audioStreams: [],
@@ -113,6 +114,7 @@ describe('onConvertSuccessHandler', () => {
     const baseMetadata: VideoMetadata = {
         title: 'My Video',
         durationInMs: 120000,
+        is10bit: false,
         chapters: [],
         videoStreams: [],
         audioStreams: [],
@@ -146,6 +148,15 @@ describe('onConvertSuccessHandler', () => {
         const { video } = (mockAmqpClient.publish as jest.Mock).mock.calls[0][2];
         expect(video).not.toHaveProperty('chaptersUrl');
         expect(video).not.toHaveProperty('chapters');
+    });
+
+    it('omits is10bit from the published video object', async () => {
+        const metadata10bit: VideoMetadata = { ...baseMetadata, is10bit: true };
+        const handler = onConvertSuccessHandler(mockAmqpClient);
+        await handler(basePayload, { videoMetadata: metadata10bit, workDirPath: '/tmp/abc' });
+
+        const { video } = (mockAmqpClient.publish as jest.Mock).mock.calls[0][2];
+        expect(video).not.toHaveProperty('is10bit');
     });
 
     it('includes chaptersUrl and chapters when chapters are present', async () => {
