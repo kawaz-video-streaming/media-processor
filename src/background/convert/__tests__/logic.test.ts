@@ -58,7 +58,6 @@ describe('convertMedia', () => {
     const mockVideoMetadata: VideoMetadata = {
         title: 'video',
         durationInMs: 0,
-        is10bit: false,
         chapters: [],
         videoStreams: [],
         audioStreams: [],
@@ -116,7 +115,7 @@ describe('convertMedia', () => {
     it('converts media to DASH stream with media path and mpd path', async () => {
         await convertMedia(config, mockStorageClient, payload, workPaths);
 
-        expect(mockedConvertMediaToDash).toHaveBeenCalledWith(workPaths.mediaPath, workPaths.mpdPath, false);
+        expect(mockedConvertMediaToDash).toHaveBeenCalledWith(workPaths.mediaPath, workPaths.mpdPath);
     });
 
     it('patches MPD with subtitle tracks after DASH conversion', async () => {

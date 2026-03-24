@@ -33,7 +33,7 @@ export const onConvertSuccessHandler = (amqpClient: AmqpClient) =>
                 : {}
             ),
             subtitleStreams: videoMetadata.subtitleStreams.map(omit(['index'])),
-            ...omit(['chapters', 'subtitleStreams', 'is10bit'], videoMetadata)
+            ...omit(['chapters', 'subtitleStreams'], videoMetadata)
         }
         amqpClient.publish('register', 'register.media', { video });
         await cleanupWorkspace(workDirPath);

@@ -124,11 +124,9 @@ export const getVideoMetadata = async (mediaPath: string): Promise<VideoMetadata
     const mediaVideoStreams = getVideoStreams(mediaStreams, mediaTitle, mediaDurationInMs);
     const mediaAudioStreams = getAudioStreams(mediaStreams, mediaDurationInMs);
     const mediaSubtitleStreams = getSubtitleStreams(mediaStreams, mediaDurationInMs);
-    const is10bit = mediaStreams.filter(({ codec_type }) => codec_type === 'video').some(({ pix_fmt }) => /10(le|be)/.test(pix_fmt ?? ''));
     return {
         title: mediaTitle,
         durationInMs: mediaDurationInMs,
-        is10bit,
         chapters: mediaChapters,
         videoStreams: mediaVideoStreams,
         audioStreams: mediaAudioStreams,
@@ -153,9 +151,9 @@ const buildDashOutputOptions = (videoEncoder: string, extraVideoOptions: string[
     '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
 ];
 
-export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string, is10bit: boolean) => {
+export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string) => {
     const videoEncoder = await isEncoderAvailable('h264_nvenc') ? 'h264_nvenc' : 'h264';
-    const extraVideoOptions = videoEncoder === 'h264_nvenc' && is10bit ? ['-pix_fmt', 'yuv420p'] : [];
+    const extraVideoOptions = videoEncoder === 'h264_nvenc' ? ['-pix_fmt', 'yuv420p'] : [];
     await runFfmpeg(mediaPath, mpdPath, buildDashOutputOptions(videoEncoder, extraVideoOptions), true);
     await unlink(mediaPath);
 }

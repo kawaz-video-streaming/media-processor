@@ -34,14 +34,13 @@ export interface SubtitleStream extends languageStream {
 export interface VideoMetadata {
     title: string;
     durationInMs: number;
-    is10bit: boolean;
     chapters: VideoChapter[];
     videoStreams: VideoStream[];
     audioStreams: AudioStream[];
     subtitleStreams: SubtitleStream[];
 }
 
-export interface Video extends Omit<VideoMetadata, 'chapters' | 'subtitleStreams' | 'is10bit'> {
+export interface Video extends Omit<VideoMetadata, 'chapters' | 'subtitleStreams'> {
     _id: string;
     playUrl: string;
     chaptersUrl?: string;
