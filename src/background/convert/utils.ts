@@ -9,7 +9,7 @@ import { pipeline } from 'stream/promises';
 import { isEncoderAvailable, runFfmpeg, runFfprobe } from '../../utils/ffmpeg';
 import { collectFilesRecursively, formatPath } from '../../utils/files';
 import { NonVideoMediaError } from './errors';
-import { AudioStream, Convert, ConvertConfig, SubtitleStream, VideoChapter, VideoMetadata, VideoStream, WorkPaths } from './types';
+import { AudioStream, Convert, ConvertConfig, SubtitleStream, VideoMetadata, VideoChapter, VideoStream, WorkPaths } from './types';
 
 
 export const initializeWorkspace = ({ mediaId, mediaName }: Convert): WorkPaths => {

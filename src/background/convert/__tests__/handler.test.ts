@@ -123,16 +123,17 @@ describe('onConvertSuccessHandler', () => {
         mockedCleanup.mockResolvedValue(undefined);
     });
 
-    it('publishes video object to register.media with correct playUrl and _id', async () => {
+    it('publishes to progress.media with mediaId, status completed, and playUrl in metadata', async () => {
         const handler = onConvertSuccessHandler(mockAmqpClient);
         await handler(basePayload, { videoMetadata: baseMetadata, workDirPath: '/tmp/abc' });
 
         expect(mockAmqpClient.publish).toHaveBeenCalledWith(
-            'register',
-            'register.media',
+            'progress',
+            'progress.media',
             expect.objectContaining({
-                video: expect.objectContaining({
-                    _id: '507f1f77bcf86cd799439011',
+                mediaId: '507f1f77bcf86cd799439011',
+                status: 'completed',
+                metadata: expect.objectContaining({
                     playUrl: '507f1f77bcf86cd799439011/output.mpd'
                 })
             })
@@ -143,9 +144,9 @@ describe('onConvertSuccessHandler', () => {
         const handler = onConvertSuccessHandler(mockAmqpClient);
         await handler(basePayload, { videoMetadata: baseMetadata, workDirPath: '/tmp/abc' });
 
-        const { video } = (mockAmqpClient.publish as jest.Mock).mock.calls[0][2];
-        expect(video).not.toHaveProperty('chaptersUrl');
-        expect(video).not.toHaveProperty('chapters');
+        const { metadata } = (mockAmqpClient.publish as jest.Mock).mock.calls[0][2];
+        expect(metadata).not.toHaveProperty('chaptersUrl');
+        expect(metadata).not.toHaveProperty('chapters');
     });
 
     it('includes chaptersUrl and chapters when chapters are present', async () => {
@@ -157,9 +158,9 @@ describe('onConvertSuccessHandler', () => {
         const handler = onConvertSuccessHandler(mockAmqpClient);
         await handler(basePayload, { videoMetadata: metadataWithChapters, workDirPath: '/tmp/abc' });
 
-        const { video } = (mockAmqpClient.publish as jest.Mock).mock.calls[0][2];
-        expect(video.chaptersUrl).toBe('507f1f77bcf86cd799439011/chapters.vtt');
-        expect(video.chapters).toEqual(metadataWithChapters.chapters);
+        const { metadata } = (mockAmqpClient.publish as jest.Mock).mock.calls[0][2];
+        expect(metadata.chaptersUrl).toBe('507f1f77bcf86cd799439011/chapters.vtt');
+        expect(metadata.chapters).toEqual(metadataWithChapters.chapters);
     });
 
     it('strips index from subtitle streams', async () => {
@@ -174,8 +175,8 @@ describe('onConvertSuccessHandler', () => {
         const handler = onConvertSuccessHandler(mockAmqpClient);
         await handler(basePayload, { videoMetadata: metadataWithSubtitles, workDirPath: '/tmp/abc' });
 
-        const { video } = (mockAmqpClient.publish as jest.Mock).mock.calls[0][2];
-        expect(video.subtitleStreams).toEqual([
+        const { metadata } = (mockAmqpClient.publish as jest.Mock).mock.calls[0][2];
+        expect(metadata.subtitleStreams).toEqual([
             { language: 'eng', title: 'English', durationInMs: 120000 },
             { language: 'fra', title: 'French', durationInMs: 120000 }
         ]);
@@ -187,4 +188,5 @@ describe('onConvertSuccessHandler', () => {
 
         expect(mockedCleanup).toHaveBeenCalledWith('/tmp/abc');
     });
+
 });

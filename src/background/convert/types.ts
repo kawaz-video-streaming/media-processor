@@ -40,12 +40,17 @@ export interface VideoMetadata {
     subtitleStreams: SubtitleStream[];
 }
 
-export interface Video extends Omit<VideoMetadata, 'chapters' | 'subtitleStreams'> {
-    _id: string;
+export interface MediaMetadata extends Omit<VideoMetadata, 'chapters' | 'subtitleStreams'> {
     playUrl: string;
     chaptersUrl?: string;
     chapters?: VideoChapter[];
     subtitleStreams: Omit<SubtitleStream, 'index'>[];
+}
+
+export interface Progress {
+    mediaId: string;
+    status: 'completed' | 'failed';
+    metadata?: MediaMetadata;
 }
 
 export interface ConvertHandlerSuccessResult {

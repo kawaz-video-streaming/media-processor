@@ -50,7 +50,7 @@ This is a headless async media processing service. The HTTP server exists only f
 5. Extract any detected ASS/SRT/VTT subtitle streams as `.vtt` files with FFmpeg
 6. Convert to MPEG-DASH with FFmpeg (`-f dash`, 15s segments); video re-encoded with h264_nvenc if available, else h264; audio re-encoded as aac; source file deleted after conversion
 7. Upload all workspace files to VOD S3 bucket under `<mediaName-no-ext>/` key prefix via `storageClient.uploadObjects` (bulk upload)
-8. On success: `onConvertSuccessHandler` publishes to `register.media` and deletes the workspace. On `StorageError`: throws `ConversionRetriableError` (AMQP retries, workspace cleaned up by `handleRetriableError` hook). On any other error: throws `ConversionFatalError` (message marked failed via `progress.media`, workspace cleaned up by `handleFatalError` hook). Both error classes carry `workDirPath` for deferred cleanup.
+8. On success: `onConvertSuccessHandler` publishes to `progress.media` with `{ mediaId, status: 'completed', metadata }` and deletes the workspace. On `StorageError`: throws `ConversionRetriableError` (AMQP retries, workspace cleaned up by `handleRetriableError` hook). On any other error: throws `ConversionFatalError` (message marked failed via `progress.media`, workspace cleaned up by `handleFatalError` hook). Both error classes carry `workDirPath` for deferred cleanup.
 
 **Key directories:**
 - `src/background/convert/` — entire conversion consumer: `handler.ts` orchestrates, `logic.ts` runs the conversion pipeline, `utils.ts` implements each step, `types.ts` has Zod schema + interfaces, `errors.ts` has domain errors, `binding.ts` has AMQP queue/exchange/topic constants

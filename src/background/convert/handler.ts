@@ -3,7 +3,7 @@ import { StorageClient, StorageError } from "@ido_kawaz/storage-client";
 import { isNotEmpty, omit } from "ramda";
 import { ConversionFatalError, ConversionRetriableError } from "./errors";
 import * as logic from "./logic";
-import { Convert, ConvertConfig, ConvertHandlerSuccessResult, Video } from "./types";
+import { Convert, ConvertConfig, ConvertHandlerSuccessResult, MediaMetadata, Progress } from "./types";
 import { cleanupWorkspace, initializeWorkspace } from "./utils";
 
 export const convertMediaHandler = (storageClient: StorageClient, config: ConvertConfig) =>
@@ -25,8 +25,7 @@ export const convertMediaHandler = (storageClient: StorageClient, config: Conver
 
 export const onConvertSuccessHandler = (amqpClient: AmqpClient) =>
     async ({ mediaId }: Convert, { videoMetadata, workDirPath }: ConvertHandlerSuccessResult) => {
-        const video: Video = {
-            _id: mediaId,
+        const mediaMetadata: MediaMetadata = {
             playUrl: `${mediaId}/output.mpd`,
             ...(isNotEmpty(videoMetadata.chapters) ?
                 { chaptersUrl: `${mediaId}/chapters.vtt`, chapters: videoMetadata.chapters }
@@ -35,6 +34,6 @@ export const onConvertSuccessHandler = (amqpClient: AmqpClient) =>
             subtitleStreams: videoMetadata.subtitleStreams.map(omit(['index'])),
             ...omit(['chapters', 'subtitleStreams'], videoMetadata)
         }
-        amqpClient.publish('register', 'register.media', { video });
+        amqpClient.publish<Progress>('progress', 'progress.media', { mediaId, status: 'completed', metadata: mediaMetadata });
         await cleanupWorkspace(workDirPath);
     };
