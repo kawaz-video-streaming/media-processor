@@ -3,7 +3,7 @@ import { StorageClient } from "@ido_kawaz/storage-client";
 import { ConvertMediaConsumerBinding, createConvertConsumerBinding } from "./binding";
 import { ConversionFatalError, ConversionRetriableError } from "./errors";
 import { convertMediaHandler, onConvertSuccessHandler } from "./handler";
-import { Convert, ConvertConfig, ConvertHandlerSuccessResult, validateConvertPayload } from "./types";
+import { Convert, ConvertConfig, ConvertHandlerSuccessResult, Progress, validateConvertPayload } from "./types";
 import { cleanupWorkspace } from "./utils";
 
 
@@ -19,7 +19,7 @@ export const createConvertConsumer = (storageClient: StorageClient, amqpClient: 
         })
         .on('handleFatalError', async (error, payload) => {
             if (validateConvertPayload(payload)) {
-                amqpClient.publish('progress', 'progress.media', { mediaId: payload.mediaId, status: 'failed' });
+                amqpClient.publish<Progress>('progress', 'progress.media', { mediaId: payload.mediaId, status: 'failed' });
             }
             if (error instanceof ConversionFatalError) {
                 await cleanupWorkspace(error.workDirPath);
