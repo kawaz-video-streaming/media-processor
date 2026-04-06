@@ -32,7 +32,7 @@ export interface SubtitleStream extends languageStream {
 }
 
 export interface VideoMetadata {
-    title: string;
+    name: string;
     durationInMs: number;
     chapters: VideoChapter[];
     videoStreams: VideoStream[];
@@ -61,7 +61,7 @@ export interface ConvertHandlerSuccessResult {
 
 export interface Convert {
     mediaId: string;
-    mediaName: string;
+    mediaFileName: string;
     mediaStorageBucket: string;
     mediaRoutingKey: string;
 }
@@ -74,9 +74,9 @@ const convertSchema = z.object({
     mediaId: z.string().refine((value) => Types.ObjectId.isValid(value), {
         message: "Invalid mediaId format. Expected a valid ObjectId string."
     }),
-    mediaName: z.string(),
+    mediaFileName: z.string(),
     mediaStorageBucket: z.string(),
     mediaRoutingKey: z.string()
-})
+}) satisfies z.ZodType<Convert>;
 
 export const validateConvertPayload = validateSchema<Convert>(convertSchema);   

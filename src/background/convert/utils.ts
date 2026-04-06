@@ -12,9 +12,9 @@ import { NonVideoMediaError } from './errors';
 import { AudioStream, Convert, ConvertConfig, SubtitleStream, VideoMetadata, VideoChapter, VideoStream, WorkPaths } from './types';
 
 
-export const initializeWorkspace = ({ mediaId, mediaName }: Convert): WorkPaths => {
+export const initializeWorkspace = ({ mediaId, mediaFileName }: Convert): WorkPaths => {
     const workDirPath = formatPath(resolve(mkdtempSync(join(__dirname, '../../../tmp', `${mediaId}-`))));
-    const mediaPath = formatPath(resolve(workDirPath, mediaName));
+    const mediaPath = formatPath(resolve(workDirPath, mediaFileName));
     const mpdPath = formatPath(resolve(workDirPath, 'output.mpd'));
     return { mediaPath, mpdPath, workDirPath };
 }
@@ -117,15 +117,15 @@ export const getVideoChapters = (mediaData: FfprobeData): VideoChapter[] => medi
 
 export const getVideoMetadata = async (mediaPath: string): Promise<VideoMetadata> => {
     const mediaData = await runFfprobe(mediaPath);
-    const mediaTitle = (mediaData.format.tags?.title as string) ?? basename(mediaPath, extname(mediaPath));
+    const mediaName = (mediaData.format.tags?.title as string) ?? basename(mediaPath, extname(mediaPath));
     const mediaDurationInMs = (mediaData.format.duration ?? 0) * 1000;
     const mediaChapters = getVideoChapters(mediaData);
     const mediaStreams = mediaData.streams ?? [];
-    const mediaVideoStreams = getVideoStreams(mediaStreams, mediaTitle, mediaDurationInMs);
+    const mediaVideoStreams = getVideoStreams(mediaStreams, mediaName, mediaDurationInMs);
     const mediaAudioStreams = getAudioStreams(mediaStreams, mediaDurationInMs);
     const mediaSubtitleStreams = getSubtitleStreams(mediaStreams, mediaDurationInMs);
     return {
-        title: mediaTitle,
+        name: mediaName,
         durationInMs: mediaDurationInMs,
         chapters: mediaChapters,
         videoStreams: mediaVideoStreams,

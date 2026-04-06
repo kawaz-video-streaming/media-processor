@@ -66,7 +66,7 @@ describe('E2E: Convert Pipeline', () => {
     describe('Non-video media', () => {
         const payload = {
             mediaId: '507f1f77bcf86cd799439011',
-            mediaName: 'audio-only.mp3',
+            mediaFileName: 'audio-only.mp3',
             mediaStorageBucket: 'raw-media',
             mediaRoutingKey: 'uploads/audio-only.mp3'
         };
@@ -90,7 +90,7 @@ describe('E2E: Convert Pipeline', () => {
     describe('Video without subtitles', () => {
         const payload = {
             mediaId: '507f1f77bcf86cd799439011',
-            mediaName: 'test-video.mp4',
+            mediaFileName: 'test-video.mp4',
             mediaStorageBucket: 'raw-media',
             mediaRoutingKey: 'uploads/test-video.mp4'
         };
@@ -159,7 +159,7 @@ describe('E2E: Convert Pipeline', () => {
     describe('Video with subtitles', () => {
         const payload = {
             mediaId: '507f1f77bcf86cd799439011',
-            mediaName: 'lecture.mkv',
+            mediaFileName: 'lecture.mkv',
             mediaStorageBucket: 'raw-media',
             mediaRoutingKey: 'uploads/lecture.mkv'
         };
@@ -230,7 +230,7 @@ describe('E2E: Convert Pipeline', () => {
     describe('Video with chapters', () => {
         const payload = {
             mediaId: '507f1f77bcf86cd799439011',
-            mediaName: 'documentary.mkv',
+            mediaFileName: 'documentary.mkv',
             mediaStorageBucket: 'raw-media',
             mediaRoutingKey: 'uploads/documentary.mkv'
         };

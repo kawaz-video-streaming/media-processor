@@ -64,7 +64,7 @@ describe('getVideoMetadata', () => {
 
     it('uses format.tags.title as title when present', async () => {
         const video = await getVideoMetadata(MEDIA_PATH);
-        expect(video.title).toBe('My Video');
+        expect(video.name).toBe('My Video');
     });
 
     it('falls back to filename (without extension) when title tag is absent', async () => {
@@ -75,7 +75,7 @@ describe('getVideoMetadata', () => {
         } as any);
 
         const video = await getVideoMetadata(MEDIA_PATH);
-        expect(video.title).toBe('video');
+        expect(video.name).toBe('video');
     });
 
     it('sets duration from format.duration', async () => {

@@ -44,7 +44,7 @@ describe('convertMedia', () => {
 
     const payload = {
         mediaId: '507f1f77bcf86cd799439011',
-        mediaName: 'video.mp4',
+        mediaFileName: 'video.mp4',
         mediaStorageBucket: 'raw-bucket',
         mediaRoutingKey: 'media/video.mp4'
     };
@@ -56,7 +56,7 @@ describe('convertMedia', () => {
     };
 
     const mockVideoMetadata: VideoMetadata = {
-        title: 'video',
+        name: 'video',
         durationInMs: 0,
         chapters: [],
         videoStreams: [],
