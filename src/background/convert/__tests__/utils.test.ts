@@ -1,11 +1,17 @@
 import { NonVideoMediaError } from '../errors';
-import { getVideoChapters, getVideoMetadata } from '../utils';
+import { generateThumbnailsTrack, getVideoChapters, getVideoMetadata } from '../utils';
 
 jest.mock('../../../utils/ffmpeg');
+jest.mock('fs/promises', () => ({
+    writeFile: jest.fn().mockResolvedValue(undefined)
+}));
 
 import * as ffmpegUtils from '../../../utils/ffmpeg';
+import { writeFile } from 'fs/promises';
 
 const mockedRunFfprobe = ffmpegUtils.runFfprobe as jest.MockedFunction<typeof ffmpegUtils.runFfprobe>;
+const mockedRunFfmpeg = ffmpegUtils.runFfmpeg as jest.MockedFunction<typeof ffmpegUtils.runFfmpeg>;
+const mockedWriteFile = writeFile as jest.MockedFunction<typeof writeFile>;
 
 const MEDIA_PATH = '/tmp/workspace/video.mp4';
 
@@ -43,6 +49,67 @@ describe('getVideoChapters', () => {
 
     it('returns empty array when there are no chapters', () => {
         expect(getVideoChapters({ chapters: [] } as any)).toEqual([]);
+    });
+});
+
+describe('generateThumbnailsTrack', () => {
+    const WORK_DIR = '/tmp/workspace';
+    const thumbnailConfig = { thumbnailIntervalInSeconds: 10, thumbnailWidth: 160, thumbnailHeight: 90, thumbnailCols: 10 };
+
+    beforeEach(() => {
+        mockedRunFfmpeg.mockResolvedValue(undefined);
+        mockedWriteFile.mockResolvedValue(undefined);
+    });
+
+    it('runs ffmpeg to generate sprite sheet from media path', async () => {
+        await generateThumbnailsTrack(MEDIA_PATH, WORK_DIR, 60000, thumbnailConfig);
+
+        expect(mockedRunFfmpeg).toHaveBeenCalledWith(
+            MEDIA_PATH,
+            expect.stringContaining('thumbnails.jpg'),
+            expect.arrayContaining(['-vf', expect.stringContaining('fps='), '-frames:v', '1'])
+        );
+    });
+
+    it('writes a thumbnails.vtt file to the work directory', async () => {
+        await generateThumbnailsTrack(MEDIA_PATH, WORK_DIR, 60000, thumbnailConfig);
+
+        expect(mockedWriteFile).toHaveBeenCalledWith(
+            expect.stringContaining('thumbnails.vtt'),
+            expect.stringContaining('WEBVTT'),
+            'utf-8'
+        );
+    });
+
+    it('generates one vtt cue per thumbnail interval', async () => {
+        await generateThumbnailsTrack(MEDIA_PATH, WORK_DIR, 30000, thumbnailConfig);
+
+        const vttContent = (mockedWriteFile.mock.calls[0][1] as string);
+        const cueCount = (vttContent.match(/-->/g) ?? []).length;
+        expect(cueCount).toBe(3); // 30s / 10s interval = 3 cues
+    });
+
+    it('clamps the last cue end time to media duration', async () => {
+        await generateThumbnailsTrack(MEDIA_PATH, WORK_DIR, 25000, thumbnailConfig);
+
+        const vttContent = (mockedWriteFile.mock.calls[0][1] as string);
+        expect(vttContent).toContain('00:00:20.000 --> 00:00:25.000');
+    });
+
+    it('includes xywh sprite coordinates in each cue', async () => {
+        await generateThumbnailsTrack(MEDIA_PATH, WORK_DIR, 20000, thumbnailConfig);
+
+        const vttContent = (mockedWriteFile.mock.calls[0][1] as string);
+        expect(vttContent).toContain('thumbnails.jpg#xywh=0,0,');
+        expect(vttContent).toContain('thumbnails.jpg#xywh=160,0,');
+    });
+
+    it('produces a single cue for very short media', async () => {
+        await generateThumbnailsTrack(MEDIA_PATH, WORK_DIR, 5000, thumbnailConfig);
+
+        const vttContent = (mockedWriteFile.mock.calls[0][1] as string);
+        const cueCount = (vttContent.match(/-->/g) ?? []).length;
+        expect(cueCount).toBe(1);
     });
 });
 

@@ -8,6 +8,7 @@ jest.mock('../utils', () => ({
     getVideoMetadata: jest.fn(),
     generateSubtitleTracks: jest.fn(),
     generateChaptersTrack: jest.fn(),
+    generateThumbnailsTrack: jest.fn(),
     convertMediaToDashStream: jest.fn(),
     addSubtitlesToMpd: jest.fn(),
     uploadStreamToStorage: jest.fn()
@@ -18,6 +19,7 @@ import {
     getVideoMetadata,
     generateSubtitleTracks,
     generateChaptersTrack,
+    generateThumbnailsTrack,
     convertMediaToDashStream,
     addSubtitlesToMpd,
     uploadStreamToStorage
@@ -27,6 +29,7 @@ const mockedWriteMedia = writeMediaToDirectory as jest.MockedFunction<typeof wri
 const mockedGetVideoMetadata = getVideoMetadata as jest.MockedFunction<typeof getVideoMetadata>;
 const mockedGenerateSubtitleTracks = generateSubtitleTracks as jest.MockedFunction<typeof generateSubtitleTracks>;
 const mockedGenerateChaptersTrack = generateChaptersTrack as jest.MockedFunction<typeof generateChaptersTrack>;
+const mockedGenerateThumbnailsTrack = generateThumbnailsTrack as jest.MockedFunction<typeof generateThumbnailsTrack>;
 const mockedConvertMediaToDash = convertMediaToDashStream as jest.MockedFunction<typeof convertMediaToDashStream>;
 const mockedAddSubtitlesToMpd = addSubtitlesToMpd as jest.MockedFunction<typeof addSubtitlesToMpd>;
 const mockedUploadStream = uploadStreamToStorage as jest.MockedFunction<typeof uploadStreamToStorage>;
@@ -40,7 +43,10 @@ describe('convertMedia', () => {
         ensureBucket: jest.fn()
     } as unknown as StorageClient;
 
-    const config: ConvertConfig = { vodBucketName: 'vod-bucket' };
+    const config: ConvertConfig = {
+        vodBucketName: 'vod-bucket',
+        thumbnailConfig: { thumbnailIntervalInSeconds: 10, thumbnailWidth: 160, thumbnailHeight: 90, thumbnailCols: 10 }
+    };
 
     const payload = {
         mediaId: '507f1f77bcf86cd799439011',
@@ -70,6 +76,7 @@ describe('convertMedia', () => {
         mockedGetVideoMetadata.mockResolvedValue(mockVideoMetadata);
         mockedGenerateSubtitleTracks.mockResolvedValue([]);
         mockedGenerateChaptersTrack.mockResolvedValue(undefined);
+        mockedGenerateThumbnailsTrack.mockResolvedValue(undefined);
         mockedConvertMediaToDash.mockResolvedValue(undefined);
         mockedAddSubtitlesToMpd.mockResolvedValue(undefined);
         mockedUploadStream.mockResolvedValue(undefined);
@@ -112,6 +119,17 @@ describe('convertMedia', () => {
         );
     });
 
+    it('generates thumbnails track with media path, work dir, and duration', async () => {
+        await convertMedia(config, mockStorageClient, payload, workPaths);
+
+        expect(mockedGenerateThumbnailsTrack).toHaveBeenCalledWith(
+            workPaths.mediaPath,
+            workPaths.workDirPath,
+            mockVideoMetadata.durationInMs,
+            config.thumbnailConfig
+        );
+    });
+
     it('converts media to DASH stream with media path and mpd path', async () => {
         await convertMedia(config, mockStorageClient, payload, workPaths);
 
@@ -149,13 +167,14 @@ describe('convertMedia', () => {
         mockedGetVideoMetadata.mockImplementation(async () => { callOrder.push('getVideoMetadata'); return mockVideoMetadata; });
         mockedGenerateSubtitleTracks.mockImplementation(async () => { callOrder.push('generateSubtitles'); return []; });
         mockedGenerateChaptersTrack.mockImplementation(async () => { callOrder.push('generateChapters'); });
+        mockedGenerateThumbnailsTrack.mockImplementation(async () => { callOrder.push('generateThumbnails'); });
         mockedConvertMediaToDash.mockImplementation(async () => { callOrder.push('convert'); });
         mockedAddSubtitlesToMpd.mockImplementation(async () => { callOrder.push('addSubtitlesToMpd'); });
         mockedUploadStream.mockImplementation(async () => { callOrder.push('upload'); });
 
         await convertMedia(config, mockStorageClient, payload, workPaths);
 
-        expect(callOrder).toEqual(['download', 'writeMedia', 'getVideoMetadata', 'generateSubtitles', 'generateChapters', 'convert', 'addSubtitlesToMpd', 'upload']);
+        expect(callOrder).toEqual(['download', 'writeMedia', 'getVideoMetadata', 'generateSubtitles', 'generateChapters', 'generateThumbnails', 'convert', 'addSubtitlesToMpd', 'upload']);
     });
 
     it('returns videoMetadata', async () => {

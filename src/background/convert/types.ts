@@ -42,6 +42,7 @@ export interface VideoMetadata {
 
 export interface MediaMetadata extends Omit<VideoMetadata, 'chapters' | 'subtitleStreams'> {
     playUrl: string;
+    thumbnailsUrl: string;
     chaptersUrl?: string;
     chapters?: VideoChapter[];
     subtitleStreams: Omit<SubtitleStream, 'index'>[];
@@ -66,8 +67,16 @@ export interface Convert {
     mediaRoutingKey: string;
 }
 
+export interface ThumbnailConfig {
+    thumbnailIntervalInSeconds: number;
+    thumbnailWidth: number;
+    thumbnailHeight: number;
+    thumbnailCols: number;
+}
+
 export interface ConvertConfig {
     vodBucketName: string;
+    thumbnailConfig: ThumbnailConfig;
 }
 
 const convertSchema = z.object({

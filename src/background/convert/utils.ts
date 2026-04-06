@@ -9,7 +9,7 @@ import { pipeline } from 'stream/promises';
 import { isEncoderAvailable, runFfmpeg, runFfprobe } from '../../utils/ffmpeg';
 import { collectFilesRecursively, formatPath } from '../../utils/files';
 import { NonVideoMediaError } from './errors';
-import { AudioStream, Convert, ConvertConfig, SubtitleStream, VideoMetadata, VideoChapter, VideoStream, WorkPaths } from './types';
+import { AudioStream, Convert, ConvertConfig, SubtitleStream, ThumbnailConfig, VideoMetadata, VideoChapter, VideoStream, WorkPaths } from './types';
 
 
 export const initializeWorkspace = ({ mediaId, mediaFileName }: Convert): WorkPaths => {
@@ -70,6 +70,39 @@ export const generateChaptersTrack = async (chapters: VideoChapter[], workDirPat
     await writeFile(chaptersPath, lines.join('\n'), 'utf-8');
 };
 
+export const generateThumbnailsTrack = async (
+    mediaPath: string,
+    workDirPath: string,
+    durationInMs: number,
+    { thumbnailIntervalInSeconds, thumbnailWidth, thumbnailHeight, thumbnailCols }: ThumbnailConfig
+): Promise<void> => {
+    const spriteSheetPath = formatPath(resolve(workDirPath, 'thumbnails.jpg'));
+    const vttPath = formatPath(resolve(workDirPath, 'thumbnails.vtt'));
+
+    const totalFrames = Math.max(1, Math.ceil(durationInMs / 1000 / thumbnailIntervalInSeconds));
+    const rows = Math.ceil(totalFrames / thumbnailCols);
+
+    await runFfmpeg(mediaPath, spriteSheetPath, [
+        '-vf', `fps=1/${thumbnailIntervalInSeconds},scale=${thumbnailWidth}:${thumbnailHeight},tile=${thumbnailCols}x${rows}`,
+        '-frames:v', '1',
+        '-q:v', '3'
+    ]);
+
+    const lines = ['WEBVTT', ''];
+    for (let i = 0; i < totalFrames; i++) {
+        const startMs = i * thumbnailIntervalInSeconds * 1000;
+        const endMs = Math.min((i + 1) * thumbnailIntervalInSeconds * 1000, durationInMs);
+        const x = (i % thumbnailCols) * thumbnailWidth;
+        const y = Math.floor(i / thumbnailCols) * thumbnailHeight;
+        lines.push(
+            `${formatVttTimestamp(startMs)} --> ${formatVttTimestamp(endMs)}`,
+            `thumbnails.jpg#xywh=${x},${y},${thumbnailWidth},${thumbnailHeight}`,
+            ''
+        );
+    }
+    await writeFile(vttPath, lines.join('\n'), 'utf-8');
+};
+
 const formatDurationInMs = (duration: any) => {
     if (typeof duration !== 'string' || isNil<string>(duration)) {
         return undefined;
@@ -113,7 +146,6 @@ export const getVideoChapters = (mediaData: FfprobeData): VideoChapter[] => medi
     chapterStartTime: (chapter.start_time ?? 0) * 1000,
     chapterEndTime: (chapter.end_time ?? 0) * 1000
 }));
-
 
 export const getVideoMetadata = async (mediaPath: string): Promise<VideoMetadata> => {
     const mediaData = await runFfprobe(mediaPath);
@@ -181,7 +213,6 @@ export const addSubtitlesToMpd = async (mpdPath: string, subtitlePaths: string[]
     const modified = mpdContent.replace('\n\t</Period>', `\n${subtitleSets}\n\t</Period>`);
     await writeFile(mpdPath, modified, 'utf-8');
 }
-
 
 const createStorageObjectsToUpload = (workDirPath: string, mediaId: string, filesPaths: string[]): StorageObject[] =>
     filesPaths.map(filePath => {

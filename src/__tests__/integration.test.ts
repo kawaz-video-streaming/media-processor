@@ -21,7 +21,8 @@ describe('E2E: Convert Pipeline', () => {
     } as unknown as StorageClient;
 
     const config = {
-        vodBucketName: 'vod-bucket'
+        vodBucketName: 'vod-bucket',
+        thumbnailConfig: { thumbnailIntervalInSeconds: 10, thumbnailWidth: 160, thumbnailHeight: 90, thumbnailCols: 10 }
     };
 
     beforeAll(async () => {
@@ -59,6 +60,8 @@ describe('E2E: Convert Pipeline', () => {
                 await writeFile(path.join(dir, 'seg_0_001.m4s'), Buffer.alloc(0));
             } else if (outputPath.endsWith('.vtt')) {
                 await writeFile(outputPath, 'WEBVTT\n\n');
+            } else if (outputPath.endsWith('.jpg')) {
+                await writeFile(outputPath, Buffer.alloc(0));
             }
         });
     });
@@ -223,7 +226,7 @@ describe('E2E: Convert Pipeline', () => {
 
             const [[, uploadedObjects]] = (storageClient.uploadObjects as jest.Mock).mock.calls as [string, { key: string }[]][];
             const uploadedKeys = uploadedObjects.map(obj => obj.key);
-            expect(uploadedKeys.filter(k => k.endsWith('.vtt'))).toHaveLength(2);
+            expect(uploadedKeys.filter(k => k.includes('subtitles_'))).toHaveLength(2);
         });
     });
 

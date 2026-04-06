@@ -27,6 +27,7 @@ export const onConvertSuccessHandler = (amqpClient: AmqpClient) =>
     async ({ mediaId }: Convert, { videoMetadata, workDirPath }: ConvertHandlerSuccessResult) => {
         const mediaMetadata: MediaMetadata = {
             playUrl: `${mediaId}/output.mpd`,
+            thumbnailsUrl: `${mediaId}/thumbnails.vtt`,
             ...(isNotEmpty(videoMetadata.chapters) ?
                 { chaptersUrl: `${mediaId}/chapters.vtt`, chapters: videoMetadata.chapters }
                 : {}

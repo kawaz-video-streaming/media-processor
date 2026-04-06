@@ -8,7 +8,8 @@ describe('createConvertConsumer', () => {
     const mockStorageClient = {} as unknown as StorageClient;
     const mockAmqpClient = {} as unknown as AmqpClient;
     const config: ConvertConfig = {
-        vodBucketName: 'vod-bucket'
+        vodBucketName: 'vod-bucket',
+        thumbnailConfig: { thumbnailIntervalInSeconds: 10, thumbnailWidth: 160, thumbnailHeight: 90, thumbnailCols: 10 }
     };
 
     it('should return a Consumer instance', () => {

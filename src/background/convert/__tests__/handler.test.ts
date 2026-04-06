@@ -28,7 +28,8 @@ describe('convertMediaHandler', () => {
     } as unknown as StorageClient;
 
     const config: ConvertConfig = {
-        vodBucketName: 'vod-bucket'
+        vodBucketName: 'vod-bucket',
+        thumbnailConfig: { thumbnailIntervalInSeconds: 10, thumbnailWidth: 160, thumbnailHeight: 90, thumbnailCols: 10 }
     };
 
     const mockWorkPaths: WorkPaths = {
@@ -138,6 +139,14 @@ describe('onConvertSuccessHandler', () => {
                 })
             })
         );
+    });
+
+    it('includes thumbnailsUrl in metadata', async () => {
+        const handler = onConvertSuccessHandler(mockAmqpClient);
+        await handler(basePayload, { videoMetadata: baseMetadata, workDirPath: '/tmp/abc' });
+
+        const { metadata } = (mockAmqpClient.publish as jest.Mock).mock.calls[0][2];
+        expect(metadata.thumbnailsUrl).toBe('507f1f77bcf86cd799439011/thumbnails.vtt');
     });
 
     it('omits chaptersUrl and chapters when chapters array is empty', async () => {
