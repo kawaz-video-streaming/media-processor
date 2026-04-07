@@ -82,11 +82,12 @@ export const generateThumbnailsTrack = async (
     const totalFrames = Math.max(1, Math.ceil(durationInMs / 1000 / thumbnailIntervalInSeconds));
     const rows = Math.ceil(totalFrames / thumbnailCols);
 
+    console.log(`Generating thumbnails: totalFrames=${totalFrames}, rows=${rows}, cols=${thumbnailCols}`);
     await runFfmpeg(mediaPath, spriteSheetPath, [
         '-vf', `fps=1/${thumbnailIntervalInSeconds},scale=${thumbnailWidth}:${thumbnailHeight},tile=${thumbnailCols}x${rows}`,
         '-frames:v', '1',
         '-q:v', '3'
-    ]);
+    ], true);
 
     const lines = ['WEBVTT', ''];
     for (let i = 0; i < totalFrames; i++) {
@@ -186,6 +187,7 @@ const buildDashOutputOptions = (videoEncoder: string, extraVideoOptions: string[
 export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string) => {
     const videoEncoder = await isEncoderAvailable('h264_nvenc') ? 'h264_nvenc' : 'h264';
     const extraVideoOptions = videoEncoder === 'h264_nvenc' ? ['-pix_fmt', 'yuv420p'] : [];
+    console.log('convering media to dash stream:')
     await runFfmpeg(mediaPath, mpdPath, buildDashOutputOptions(videoEncoder, extraVideoOptions), true);
     await unlink(mediaPath);
 }
