@@ -6,12 +6,12 @@ import * as logic from "./logic";
 import { Convert, ConvertConfig, ConvertHandlerSuccessResult, MediaMetadata, Progress } from "./types";
 import { cleanupWorkspace, initializeWorkspace } from "./utils";
 
-export const convertMediaHandler = (storageClient: StorageClient, config: ConvertConfig) =>
+export const convertMediaHandler = (amqpClient: AmqpClient, storageClient: StorageClient, config: ConvertConfig) =>
     async (payload: Convert) => {
         const workPaths = initializeWorkspace(payload);
         const { workDirPath } = workPaths;
         try {
-            const videoMetadata = await logic.convertMedia(config, storageClient, payload, workPaths);
+            const videoMetadata = await logic.convertMedia(amqpClient, config, storageClient, payload, workPaths);
             return { videoMetadata, workDirPath };
         } catch (err) {
             const error = err as Error;
@@ -33,8 +33,9 @@ export const onConvertSuccessHandler = (amqpClient: AmqpClient) =>
                 : {}
             ),
             subtitleStreams: videoMetadata.subtitleStreams.map(omit(['index'])),
-            ...omit(['chapters', 'subtitleStreams'], videoMetadata)
+            audioStreams: videoMetadata.audioStreams.map(omit(['codec', 'channels'])),
+            ...omit(['chapters', 'subtitleStreams', 'audioStreams'], videoMetadata)
         }
-        amqpClient.publish<Progress>('progress', 'progress.media', { mediaId, status: 'completed', metadata: mediaMetadata });
+        amqpClient.publish<Progress>('progress', 'progress.media', { mediaId, percentage: 100, status: 'completed', metadata: mediaMetadata });
         await cleanupWorkspace(workDirPath);
     };

@@ -10,7 +10,7 @@ import { cleanupWorkspace } from "./utils";
 export const createConvertConsumer = (storageClient: StorageClient, amqpClient: AmqpClient, config: ConvertConfig) =>
     new Consumer<Convert, ConvertMediaConsumerBinding, ConvertHandlerSuccessResult>('convert', createConvertConsumerBinding())
         .on('validateMessage', validateConvertPayload)
-        .on('handleMessage', convertMediaHandler(storageClient, config))
+        .on('handleMessage', convertMediaHandler(amqpClient, storageClient, config))
         .on('handleSuccess', onConvertSuccessHandler(amqpClient))
         .on('handleRetriableError', async (error) => {
             if (error instanceof ConversionRetriableError) {
@@ -19,7 +19,7 @@ export const createConvertConsumer = (storageClient: StorageClient, amqpClient: 
         })
         .on('handleFatalError', async (error, payload) => {
             if (validateConvertPayload(payload)) {
-                amqpClient.publish<Progress>('progress', 'progress.media', { mediaId: payload.mediaId, status: 'failed' });
+                amqpClient.publish<Progress>('progress', 'progress.media', { mediaId: payload.mediaId, percentage: 0, status: 'failed' });
             }
             if (error instanceof ConversionFatalError) {
                 await cleanupWorkspace(error.workDirPath);

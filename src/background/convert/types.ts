@@ -25,7 +25,10 @@ interface languageStream extends stream {
 
 export interface VideoStream extends stream { }
 
-export interface AudioStream extends languageStream { }
+export interface AudioStream extends languageStream {
+    codec: string;
+    channels: number;
+}
 
 export interface SubtitleStream extends languageStream {
     index: number;
@@ -40,17 +43,19 @@ export interface VideoMetadata {
     subtitleStreams: SubtitleStream[];
 }
 
-export interface MediaMetadata extends Omit<VideoMetadata, 'chapters' | 'subtitleStreams'> {
+export interface MediaMetadata extends Omit<VideoMetadata, 'chapters' | 'subtitleStreams' | 'audioStreams'> {
     playUrl: string;
     thumbnailsUrl: string;
     chaptersUrl?: string;
     chapters?: VideoChapter[];
     subtitleStreams: Omit<SubtitleStream, 'index'>[];
+    audioStreams: Omit<AudioStream, 'codec' | 'channels'>[];
 }
 
 export interface Progress {
     mediaId: string;
-    status: 'completed' | 'failed';
+    status: 'completed' | 'failed' | 'processing';
+    percentage: number;
     metadata?: MediaMetadata;
 }
 

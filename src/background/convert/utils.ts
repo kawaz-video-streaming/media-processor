@@ -10,6 +10,7 @@ import { isEncoderAvailable, runFfmpeg, runFfprobe } from '../../utils/ffmpeg';
 import { collectFilesRecursively, formatPath } from '../../utils/files';
 import { NonVideoMediaError } from './errors';
 import { AudioStream, Convert, ConvertConfig, SubtitleStream, ThumbnailConfig, VideoMetadata, VideoChapter, VideoStream, WorkPaths } from './types';
+import { AmqpClient } from '@ido_kawaz/amqp-client';
 
 
 export const initializeWorkspace = ({ mediaId, mediaFileName }: Convert): WorkPaths => {
@@ -87,7 +88,7 @@ export const generateThumbnailsTrack = async (
         '-vf', `fps=1/${thumbnailIntervalInSeconds},scale=${thumbnailWidth}:${thumbnailHeight},tile=${thumbnailCols}x${rows}`,
         '-frames:v', '1',
         '-q:v', '3'
-    ], true);
+    ]);
 
     const lines = ['WEBVTT', ''];
     for (let i = 0; i < totalFrames; i++) {
@@ -129,7 +130,9 @@ const getAudioStreams = (mediaStreams: FfprobeStream[], defaultAudioDuration: nu
         .map(stream => ({
             title: stream.tags?.title ?? 'Audio',
             language: stream.tags?.language ?? 'und',
-            durationInMs: formatDurationInMs(stream.tags?.DURATION) ?? defaultAudioDuration
+            durationInMs: formatDurationInMs(stream.tags?.DURATION) ?? defaultAudioDuration,
+            codec: stream.codec_name ?? 'unknown',
+            channels: stream.channels ?? 2
         }));
 
 const getSubtitleStreams = (mediaStreams: FfprobeStream[], defaultSubtitleDuration: number): SubtitleStream[] =>
@@ -171,10 +174,14 @@ export const getVideoMetadata = async (mediaPath: string): Promise<VideoMetadata
 const buildDashOutputOptions = (videoEncoder: string, extraVideoOptions: string[] = []) => [
     '-f dash',
     '-avoid_negative_ts', 'make_zero',
+    '-force_key_frames', 'expr:gte(t,n_forced*15)',
     '-map 0:v',
     '-map 0:a?',
     '-c:v', videoEncoder,
     ...extraVideoOptions,
+    '-pix_fmt', 'yuv420p',
+    '-profile:v', 'main',
+    '-level:v', '4.0',
     '-c:a', 'aac',
     '-af', 'aresample=async=1:first_pts=0',
     '-use_template', '1',
@@ -184,11 +191,11 @@ const buildDashOutputOptions = (videoEncoder: string, extraVideoOptions: string[
     '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
 ];
 
-export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string) => {
-    const videoEncoder = await isEncoderAvailable('h264_nvenc') ? 'h264_nvenc' : 'h264';
-    const extraVideoOptions = videoEncoder === 'h264_nvenc' ? ['-pix_fmt', 'yuv420p'] : [];
-    console.log('convering media to dash stream:')
-    await runFfmpeg(mediaPath, mpdPath, buildDashOutputOptions(videoEncoder, extraVideoOptions), true);
+export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string, audioStreams: AudioStream[], amqpClient: AmqpClient, mediaId: string) => {
+    const videoEncoder = await isEncoderAvailable('h264_nvenc') ? 'h264_nvenc' : 'libx264';
+    const audioDownmixingOption = audioStreams.some(stream => stream.codec !== 'aac' && stream.channels > 2) ? ['-ac', '2'] : [];
+    console.log('convering media to dash stream with: ', videoEncoder);
+    await runFfmpeg(mediaPath, mpdPath, buildDashOutputOptions(videoEncoder, audioDownmixingOption), amqpClient, mediaId);
     await unlink(mediaPath);
 }
 

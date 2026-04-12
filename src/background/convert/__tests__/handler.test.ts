@@ -21,6 +21,10 @@ const mockedCleanup = cleanupWorkspace as jest.MockedFunction<typeof cleanupWork
 const mockedConvertMedia = logic.convertMedia as jest.MockedFunction<typeof logic.convertMedia>;
 
 describe('convertMediaHandler', () => {
+    const mockAmqpClient = {
+        publish: jest.fn()
+    } as unknown as AmqpClient;
+
     const mockStorageClient = {
         downloadObject: jest.fn(),
         uploadObject: jest.fn(),
@@ -61,21 +65,21 @@ describe('convertMediaHandler', () => {
     });
 
     it('should initialize workspace with the convert payload', async () => {
-        const handler = convertMediaHandler(mockStorageClient, config);
+        const handler = convertMediaHandler(mockAmqpClient, mockStorageClient, config);
         await handler(basePayload);
 
         expect(mockedInitializeWorkspace).toHaveBeenCalledWith(basePayload);
     });
 
     it('should call logic.convertMedia with correct arguments', async () => {
-        const handler = convertMediaHandler(mockStorageClient, config);
+        const handler = convertMediaHandler(mockAmqpClient, mockStorageClient, config);
         await handler(basePayload);
 
-        expect(mockedConvertMedia).toHaveBeenCalledWith(config, mockStorageClient, basePayload, mockWorkPaths);
+        expect(mockedConvertMedia).toHaveBeenCalledWith(mockAmqpClient, config, mockStorageClient, basePayload, mockWorkPaths);
     });
 
     it('should return videoMetadata and workDirPath on success', async () => {
-        const handler = convertMediaHandler(mockStorageClient, config);
+        const handler = convertMediaHandler(mockAmqpClient, mockStorageClient, config);
         const result = await handler(basePayload);
 
         expect(result).toEqual({ videoMetadata: mockVideo, workDirPath: mockWorkPaths.workDirPath });
@@ -84,7 +88,7 @@ describe('convertMediaHandler', () => {
     it('should throw ConversionFatalError with workDirPath when logic.convertMedia fails', async () => {
         mockedConvertMedia.mockRejectedValue(new Error('FFmpeg failure'));
 
-        const handler = convertMediaHandler(mockStorageClient, config);
+        const handler = convertMediaHandler(mockAmqpClient, mockStorageClient, config);
         await expect(handler(basePayload)).rejects.toBeInstanceOf(ConversionFatalError);
         await expect(handler(basePayload)).rejects.toMatchObject({ workDirPath: mockWorkPaths.workDirPath });
         expect(mockedCleanup).not.toHaveBeenCalled();
@@ -94,7 +98,7 @@ describe('convertMediaHandler', () => {
         const storageErr = Object.setPrototypeOf(new Error('Bucket unavailable'), StorageError.prototype);
         mockedConvertMedia.mockRejectedValue(storageErr);
 
-        const handler = convertMediaHandler(mockStorageClient, config);
+        const handler = convertMediaHandler(mockAmqpClient, mockStorageClient, config);
         await expect(handler(basePayload)).rejects.toBeInstanceOf(ConversionRetriableError);
     });
 });
@@ -124,7 +128,7 @@ describe('onConvertSuccessHandler', () => {
         mockedCleanup.mockResolvedValue(undefined);
     });
 
-    it('publishes to progress.media with mediaId, status completed, and playUrl in metadata', async () => {
+    it('publishes to progress.media with mediaId, status completed, percentage 100, and playUrl in metadata', async () => {
         const handler = onConvertSuccessHandler(mockAmqpClient);
         await handler(basePayload, { videoMetadata: baseMetadata, workDirPath: '/tmp/abc' });
 
@@ -134,6 +138,7 @@ describe('onConvertSuccessHandler', () => {
             expect.objectContaining({
                 mediaId: '507f1f77bcf86cd799439011',
                 status: 'completed',
+                percentage: 100,
                 metadata: expect.objectContaining({
                     playUrl: '507f1f77bcf86cd799439011/output.mpd'
                 })
@@ -188,6 +193,25 @@ describe('onConvertSuccessHandler', () => {
         expect(metadata.subtitleStreams).toEqual([
             { language: 'eng', title: 'English', durationInMs: 120000 },
             { language: 'fra', title: 'French', durationInMs: 120000 }
+        ]);
+    });
+
+    it('strips codec and channels from audio streams in published metadata', async () => {
+        const metadataWithAudio: VideoMetadata = {
+            ...baseMetadata,
+            audioStreams: [
+                { title: 'Stereo', language: 'eng', durationInMs: 120000, codec: 'ac3', channels: 6 },
+                { title: 'Surround', language: 'jpn', durationInMs: 120000, codec: 'aac', channels: 2 }
+            ]
+        };
+
+        const handler = onConvertSuccessHandler(mockAmqpClient);
+        await handler(basePayload, { videoMetadata: metadataWithAudio, workDirPath: '/tmp/abc' });
+
+        const { metadata } = (mockAmqpClient.publish as jest.Mock).mock.calls[0][2];
+        expect(metadata.audioStreams).toEqual([
+            { title: 'Stereo', language: 'eng', durationInMs: 120000 },
+            { title: 'Surround', language: 'jpn', durationInMs: 120000 }
         ]);
     });
 

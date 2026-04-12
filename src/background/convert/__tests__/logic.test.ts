@@ -1,3 +1,4 @@
+import { AmqpClient } from '@ido_kawaz/amqp-client';
 import { Readable } from 'stream';
 import { StorageClient } from '@ido_kawaz/storage-client';
 import { convertMedia } from '../logic';
@@ -36,6 +37,10 @@ const mockedUploadStream = uploadStreamToStorage as jest.MockedFunction<typeof u
 
 describe('convertMedia', () => {
     const mockMediaStream = new Readable({ read() { this.push(null); } });
+
+    const mockAmqpClient = {
+        publish: jest.fn()
+    } as unknown as AmqpClient;
 
     const mockStorageClient = {
         downloadObject: jest.fn().mockResolvedValue(mockMediaStream),
@@ -83,25 +88,25 @@ describe('convertMedia', () => {
     });
 
     it('downloads media from storage with correct bucket and key', async () => {
-        await convertMedia(config, mockStorageClient, payload, workPaths);
+        await convertMedia(mockAmqpClient, config, mockStorageClient, payload, workPaths);
 
         expect(mockStorageClient.downloadObject).toHaveBeenCalledWith('raw-bucket', 'media/video.mp4');
     });
 
     it('writes downloaded media stream to workspace directory', async () => {
-        await convertMedia(config, mockStorageClient, payload, workPaths);
+        await convertMedia(mockAmqpClient, config, mockStorageClient, payload, workPaths);
 
         expect(mockedWriteMedia).toHaveBeenCalledWith(mockMediaStream, workPaths.mediaPath);
     });
 
     it('probes media to extract video metadata', async () => {
-        await convertMedia(config, mockStorageClient, payload, workPaths);
+        await convertMedia(mockAmqpClient, config, mockStorageClient, payload, workPaths);
 
         expect(mockedGetVideoMetadata).toHaveBeenCalledWith(workPaths.mediaPath);
     });
 
     it('generates subtitle tracks from video metadata', async () => {
-        await convertMedia(config, mockStorageClient, payload, workPaths);
+        await convertMedia(mockAmqpClient, config, mockStorageClient, payload, workPaths);
 
         expect(mockedGenerateSubtitleTracks).toHaveBeenCalledWith(
             mockVideoMetadata.subtitleStreams,
@@ -111,7 +116,7 @@ describe('convertMedia', () => {
     });
 
     it('generates chapters track from video metadata', async () => {
-        await convertMedia(config, mockStorageClient, payload, workPaths);
+        await convertMedia(mockAmqpClient, config, mockStorageClient, payload, workPaths);
 
         expect(mockedGenerateChaptersTrack).toHaveBeenCalledWith(
             mockVideoMetadata.chapters,
@@ -120,7 +125,7 @@ describe('convertMedia', () => {
     });
 
     it('generates thumbnails track with media path, work dir, and duration', async () => {
-        await convertMedia(config, mockStorageClient, payload, workPaths);
+        await convertMedia(mockAmqpClient, config, mockStorageClient, payload, workPaths);
 
         expect(mockedGenerateThumbnailsTrack).toHaveBeenCalledWith(
             workPaths.mediaPath,
@@ -130,17 +135,23 @@ describe('convertMedia', () => {
         );
     });
 
-    it('converts media to DASH stream with media path and mpd path', async () => {
-        await convertMedia(config, mockStorageClient, payload, workPaths);
+    it('converts media to DASH stream with media path, mpd path, audio streams, amqp client, and media id', async () => {
+        await convertMedia(mockAmqpClient, config, mockStorageClient, payload, workPaths);
 
-        expect(mockedConvertMediaToDash).toHaveBeenCalledWith(workPaths.mediaPath, workPaths.mpdPath);
+        expect(mockedConvertMediaToDash).toHaveBeenCalledWith(
+            workPaths.mediaPath,
+            workPaths.mpdPath,
+            mockVideoMetadata.audioStreams,
+            mockAmqpClient,
+            payload.mediaId
+        );
     });
 
     it('patches MPD with subtitle tracks after DASH conversion', async () => {
         const mockSubtitlePaths = ['/tmp/video-abc123/subtitles_0_eng.vtt'];
         mockedGenerateSubtitleTracks.mockResolvedValue(mockSubtitlePaths);
 
-        await convertMedia(config, mockStorageClient, payload, workPaths);
+        await convertMedia(mockAmqpClient, config, mockStorageClient, payload, workPaths);
 
         expect(mockedAddSubtitlesToMpd).toHaveBeenCalledWith(
             workPaths.mpdPath,
@@ -150,7 +161,7 @@ describe('convertMedia', () => {
     });
 
     it('uploads converted stream to storage', async () => {
-        await convertMedia(config, mockStorageClient, payload, workPaths);
+        await convertMedia(mockAmqpClient, config, mockStorageClient, payload, workPaths);
 
         expect(mockedUploadStream).toHaveBeenCalledWith(
             mockStorageClient,
@@ -172,13 +183,13 @@ describe('convertMedia', () => {
         mockedAddSubtitlesToMpd.mockImplementation(async () => { callOrder.push('addSubtitlesToMpd'); });
         mockedUploadStream.mockImplementation(async () => { callOrder.push('upload'); });
 
-        await convertMedia(config, mockStorageClient, payload, workPaths);
+        await convertMedia(mockAmqpClient, config, mockStorageClient, payload, workPaths);
 
         expect(callOrder).toEqual(['download', 'writeMedia', 'getVideoMetadata', 'generateSubtitles', 'generateChapters', 'generateThumbnails', 'convert', 'addSubtitlesToMpd', 'upload']);
     });
 
     it('returns videoMetadata', async () => {
-        const result = await convertMedia(config, mockStorageClient, payload, workPaths);
+        const result = await convertMedia(mockAmqpClient, config, mockStorageClient, payload, workPaths);
 
         expect(result).toBe(mockVideoMetadata);
     });

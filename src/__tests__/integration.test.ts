@@ -1,3 +1,4 @@
+import { AmqpClient } from '@ido_kawaz/amqp-client';
 import { StorageClient } from '@ido_kawaz/storage-client';
 import { existsSync, readFileSync } from 'fs';
 import { writeFile } from 'fs/promises';
@@ -14,6 +15,10 @@ const mockedRunFfmpeg = ffmpegUtils.runFfmpeg as jest.MockedFunction<typeof ffmp
 const mockedRunFfprobe = ffmpegUtils.runFfprobe as jest.MockedFunction<typeof ffmpegUtils.runFfprobe>;
 
 describe('E2E: Convert Pipeline', () => {
+    const mockAmqpClient = {
+        publish: jest.fn()
+    } as unknown as AmqpClient;
+
     const storageClient = {
         downloadObject: jest.fn(),
         uploadObjects: jest.fn(),
@@ -81,7 +86,7 @@ describe('E2E: Convert Pipeline', () => {
                 streams: [{ codec_type: 'audio', tags: {} }]
             } as any);
 
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             let caughtError: any;
             try { await handler(payload); } catch (err) { caughtError = err; }
 
@@ -99,7 +104,7 @@ describe('E2E: Convert Pipeline', () => {
         };
 
         it('calls FFmpeg with the correct DASH output options', async () => {
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             await handler(payload);
 
             expect(mockedRunFfmpeg).toHaveBeenCalledWith(
@@ -108,9 +113,13 @@ describe('E2E: Convert Pipeline', () => {
                 [
                     '-f dash',
                     '-avoid_negative_ts', 'make_zero',
+                    '-force_key_frames', 'expr:gte(t,n_forced*15)',
                     '-map 0:v',
                     '-map 0:a?',
-                    '-c:v', 'h264',
+                    '-c:v', 'libx264',
+                    '-pix_fmt', 'yuv420p',
+                    '-profile:v', 'main',
+                    '-level:v', '4.0',
                     '-c:a', 'aac',
                     '-af', 'aresample=async=1:first_pts=0',
                     '-use_template', '1',
@@ -119,12 +128,13 @@ describe('E2E: Convert Pipeline', () => {
                     '-init_seg_name', 'init_v$RepresentationID$.m4s',
                     '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
                 ],
-                true
+                mockAmqpClient,
+                '507f1f77bcf86cd799439011'
             );
         });
 
         it('uploads all output files to the VOD bucket under the correct key prefix', async () => {
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             await handler(payload);
 
             expect(storageClient.ensureBucket).toHaveBeenCalledWith('vod-bucket');
@@ -138,7 +148,7 @@ describe('E2E: Convert Pipeline', () => {
         });
 
         it('returns workDirPath in result without cleaning up workspace (cleanup deferred to success handler)', async () => {
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             const result = await handler(payload);
 
             expect(result.workDirPath).toBeTruthy();
@@ -151,7 +161,7 @@ describe('E2E: Convert Pipeline', () => {
                 return Promise.reject(new Error('Upload failed'));
             });
 
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             let caughtError: any;
             try { await handler(payload); } catch (err) { caughtError = err; }
 
@@ -180,7 +190,7 @@ describe('E2E: Convert Pipeline', () => {
         });
 
         it('extracts subtitles as external wvtt files and DASH has no subtitle streams', async () => {
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             await handler(payload);
 
             // DASH call must not contain subtitle maps or mov_text
@@ -188,9 +198,13 @@ describe('E2E: Convert Pipeline', () => {
             expect(dashCall![2]).toEqual([
                 '-f dash',
                 '-avoid_negative_ts', 'make_zero',
+                '-force_key_frames', 'expr:gte(t,n_forced*15)',
                 '-map 0:v',
                 '-map 0:a?',
-                '-c:v', 'h264',
+                '-c:v', 'libx264',
+                '-pix_fmt', 'yuv420p',
+                '-profile:v', 'main',
+                '-level:v', '4.0',
                 '-c:a', 'aac',
                 '-af', 'aresample=async=1:first_pts=0',
                 '-use_template', '1',
@@ -208,7 +222,7 @@ describe('E2E: Convert Pipeline', () => {
         });
 
         it('patches the MPD with wvtt AdaptationSets for each subtitle', async () => {
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             const result = await handler(payload);
 
             const mpdPath = path.join(result.workDirPath, 'output.mpd');
@@ -221,7 +235,7 @@ describe('E2E: Convert Pipeline', () => {
         });
 
         it('uploads .vtt subtitle files to storage', async () => {
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             await handler(payload);
 
             const [[, uploadedObjects]] = (storageClient.uploadObjects as jest.Mock).mock.calls as [string, { key: string }[]][];
@@ -252,7 +266,7 @@ describe('E2E: Convert Pipeline', () => {
         });
 
         it('generates a chapters.vtt file with correct WebVTT content', async () => {
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             const result = await handler(payload);
 
             const chaptersPath = path.join(result.workDirPath, 'chapters.vtt');
@@ -266,7 +280,7 @@ describe('E2E: Convert Pipeline', () => {
         });
 
         it('uploads chapters.vtt to storage', async () => {
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             await handler(payload);
 
             const [[, uploadedObjects]] = (storageClient.uploadObjects as jest.Mock).mock.calls as [string, { key: string }[]][];
