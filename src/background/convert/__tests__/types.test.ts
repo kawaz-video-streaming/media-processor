@@ -3,7 +3,7 @@ import { validateConvertPayload } from '../types';
 describe('validateConvertPayload', () => {
     const validPayload = {
         mediaId: '507f1f77bcf86cd799439011',
-        mediaName: 'video.mp4',
+        mediaFileName: 'video.mp4',
         mediaStorageBucket: 'raw-bucket',
         mediaRoutingKey: 'media/video.mp4'
     };
@@ -22,8 +22,8 @@ describe('validateConvertPayload', () => {
         expect(validateConvertPayload(payload)).toBe(false);
     });
 
-    it('should return false when mediaName is missing', () => {
-        const { mediaName: _, ...payload } = validPayload;
+    it('should return false when mediaFileName is missing', () => {
+        const { mediaFileName: _, ...payload } = validPayload;
         expect(validateConvertPayload(payload)).toBe(false);
     });
 
@@ -45,8 +45,8 @@ describe('validateConvertPayload', () => {
         expect(validateConvertPayload(undefined)).toBe(false);
     });
 
-    it('should return false when mediaName is not a string', () => {
-        const payload = { ...validPayload, mediaName: 123 };
+    it('should return false when mediaFileName is not a string', () => {
+        const payload = { ...validPayload, mediaFileName: 123 };
         expect(validateConvertPayload(payload)).toBe(false);
     });
 });

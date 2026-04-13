@@ -1,10 +1,11 @@
+import { AmqpClient } from '@ido_kawaz/amqp-client';
 import { StorageClient } from '@ido_kawaz/storage-client';
 import { existsSync, readFileSync } from 'fs';
-import { rm, writeFile } from 'fs/promises';
+import { writeFile } from 'fs/promises';
 import path from 'path';
 import { Readable } from 'stream';
+import { ConversionFatalError } from '../background/convert/errors';
 import { convertMediaHandler } from '../background/convert/handler';
-import * as convertUtils from '../background/convert/utils';
 import * as ffmpegUtils from '../utils/ffmpeg';
 import { createTempFolder } from '../utils/files';
 
@@ -14,6 +15,10 @@ const mockedRunFfmpeg = ffmpegUtils.runFfmpeg as jest.MockedFunction<typeof ffmp
 const mockedRunFfprobe = ffmpegUtils.runFfprobe as jest.MockedFunction<typeof ffmpegUtils.runFfprobe>;
 
 describe('E2E: Convert Pipeline', () => {
+    const mockAmqpClient = {
+        publish: jest.fn()
+    } as unknown as AmqpClient;
+
     const storageClient = {
         downloadObject: jest.fn(),
         uploadObjects: jest.fn(),
@@ -21,7 +26,8 @@ describe('E2E: Convert Pipeline', () => {
     } as unknown as StorageClient;
 
     const config = {
-        vodBucketName: 'vod-bucket'
+        vodBucketName: 'vod-bucket',
+        thumbnailConfig: { thumbnailIntervalInSeconds: 10, thumbnailWidth: 160, thumbnailHeight: 90, thumbnailCols: 10 }
     };
 
     beforeAll(async () => {
@@ -59,6 +65,8 @@ describe('E2E: Convert Pipeline', () => {
                 await writeFile(path.join(dir, 'seg_0_001.m4s'), Buffer.alloc(0));
             } else if (outputPath.endsWith('.vtt')) {
                 await writeFile(outputPath, 'WEBVTT\n\n');
+            } else if (outputPath.endsWith('.jpg')) {
+                await writeFile(outputPath, Buffer.alloc(0));
             }
         });
     });
@@ -66,37 +74,37 @@ describe('E2E: Convert Pipeline', () => {
     describe('Non-video media', () => {
         const payload = {
             mediaId: '507f1f77bcf86cd799439011',
-            mediaName: 'audio-only.mp3',
+            mediaFileName: 'audio-only.mp3',
             mediaStorageBucket: 'raw-media',
             mediaRoutingKey: 'uploads/audio-only.mp3'
         };
 
-        it('rejects the file and cleans up the workspace when no video stream is found', async () => {
-            const workspaceSpy = jest.spyOn(convertUtils, 'initializeWorkspace');
+        it('rejects the file with ConversionFatalError carrying workDirPath when no video stream is found', async () => {
             mockedRunFfprobe.mockResolvedValue({
                 format: { tags: {}, duration: 180 },
                 chapters: [],
                 streams: [{ codec_type: 'audio', tags: {} }]
             } as any);
 
-            const handler = convertMediaHandler(storageClient, config);
-            await expect(handler(payload)).rejects.toThrow('No video stream found in media');
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
+            let caughtError: any;
+            try { await handler(payload); } catch (err) { caughtError = err; }
 
-            const { workDirPath } = workspaceSpy.mock.results[0].value;
-            expect(existsSync(workDirPath)).toBe(false);
+            expect(caughtError).toBeInstanceOf(ConversionFatalError);
+            expect(existsSync(caughtError.workDirPath)).toBe(true);
         });
     });
 
     describe('Video without subtitles', () => {
         const payload = {
             mediaId: '507f1f77bcf86cd799439011',
-            mediaName: 'test-video.mp4',
+            mediaFileName: 'test-video.mp4',
             mediaStorageBucket: 'raw-media',
             mediaRoutingKey: 'uploads/test-video.mp4'
         };
 
         it('calls FFmpeg with the correct DASH output options', async () => {
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             await handler(payload);
 
             expect(mockedRunFfmpeg).toHaveBeenCalledWith(
@@ -104,22 +112,29 @@ describe('E2E: Convert Pipeline', () => {
                 expect.stringContaining('output.mpd'),
                 [
                     '-f dash',
+                    '-avoid_negative_ts', 'make_zero',
+                    '-force_key_frames', 'expr:gte(t,n_forced*15)',
                     '-map 0:v',
                     '-map 0:a?',
-                    '-c:v h264_nvenc',
-                    '-c:a copy',
+                    '-c:v', 'libx264',
+                    '-pix_fmt', 'yuv420p',
+                    '-profile:v', 'main',
+                    '-level:v', '4.0',
+                    '-c:a', 'aac',
+                    '-af', 'aresample=async=1:first_pts=0',
                     '-use_template', '1',
                     '-use_timeline', '1',
                     '-seg_duration', '15',
                     '-init_seg_name', 'init_v$RepresentationID$.m4s',
                     '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
                 ],
-                true
+                mockAmqpClient,
+                '507f1f77bcf86cd799439011'
             );
         });
 
         it('uploads all output files to the VOD bucket under the correct key prefix', async () => {
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             await handler(payload);
 
             expect(storageClient.ensureBucket).toHaveBeenCalledWith('vod-bucket');
@@ -132,35 +147,32 @@ describe('E2E: Convert Pipeline', () => {
             uploadedKeys.forEach(key => expect(key.startsWith('507f1f77bcf86cd799439011/')).toBe(true));
         });
 
-        it('cleans up workspace after successful conversion', async () => {
-            const workspaceSpy = jest.spyOn(convertUtils, 'initializeWorkspace');
+        it('returns workDirPath in result without cleaning up workspace (cleanup deferred to success handler)', async () => {
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
+            const result = await handler(payload);
 
-            const handler = convertMediaHandler(storageClient, config);
-            await handler(payload);
-
-            const { workDirPath } = workspaceSpy.mock.results[0].value;
-            expect(existsSync(workDirPath)).toBe(false);
+            expect(result.workDirPath).toBeTruthy();
+            expect(existsSync(result.workDirPath)).toBe(true);
         });
 
-        it('cleans up workspace even when an upload fails', async () => {
-            const workspaceSpy = jest.spyOn(convertUtils, 'initializeWorkspace');
+        it('throws ConversionFatalError with workDirPath when an upload fails', async () => {
             (storageClient.uploadObjects as jest.Mock).mockImplementation((_bucket, objects: any[]) => {
                 objects?.forEach(obj => obj?.data?.destroy());
                 return Promise.reject(new Error('Upload failed'));
             });
 
-            const handler = convertMediaHandler(storageClient, config);
-            await expect(handler(payload)).rejects.toThrow('Upload failed');
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
+            let caughtError: any;
+            try { await handler(payload); } catch (err) { caughtError = err; }
 
-            const { workDirPath } = workspaceSpy.mock.results[0].value;
-            expect(existsSync(workDirPath)).toBe(false);
+            expect(caughtError).toBeInstanceOf(ConversionFatalError);
         });
     });
 
     describe('Video with subtitles', () => {
         const payload = {
             mediaId: '507f1f77bcf86cd799439011',
-            mediaName: 'lecture.mkv',
+            mediaFileName: 'lecture.mkv',
             mediaStorageBucket: 'raw-media',
             mediaRoutingKey: 'uploads/lecture.mkv'
         };
@@ -178,17 +190,23 @@ describe('E2E: Convert Pipeline', () => {
         });
 
         it('extracts subtitles as external wvtt files and DASH has no subtitle streams', async () => {
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             await handler(payload);
 
             // DASH call must not contain subtitle maps or mov_text
             const dashCall = mockedRunFfmpeg.mock.calls.find(([, out]) => out.endsWith('.mpd'));
             expect(dashCall![2]).toEqual([
                 '-f dash',
+                '-avoid_negative_ts', 'make_zero',
+                '-force_key_frames', 'expr:gte(t,n_forced*15)',
                 '-map 0:v',
                 '-map 0:a?',
-                '-c:v h264_nvenc',
-                '-c:a copy',
+                '-c:v', 'libx264',
+                '-pix_fmt', 'yuv420p',
+                '-profile:v', 'main',
+                '-level:v', '4.0',
+                '-c:a', 'aac',
+                '-af', 'aresample=async=1:first_pts=0',
                 '-use_template', '1',
                 '-use_timeline', '1',
                 '-seg_duration', '15',
@@ -204,18 +222,11 @@ describe('E2E: Convert Pipeline', () => {
         });
 
         it('patches the MPD with wvtt AdaptationSets for each subtitle', async () => {
-            let mpdContent = '';
-            const cleanupSpy = jest.spyOn(convertUtils, 'cleanupWorkspace').mockImplementationOnce(async (workDirPath) => {
-                const mpdPath = path.join(workDirPath, 'output.mpd');
-                if (existsSync(mpdPath)) {
-                    mpdContent = readFileSync(mpdPath, 'utf-8');
-                }
-                return rm(workDirPath, { recursive: true, force: true });
-            });
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
+            const result = await handler(payload);
 
-            const handler = convertMediaHandler(storageClient, config);
-            await handler(payload);
-            cleanupSpy.mockRestore();
+            const mpdPath = path.join(result.workDirPath, 'output.mpd');
+            const mpdContent = existsSync(mpdPath) ? readFileSync(mpdPath, 'utf-8') : '';
 
             expect(mpdContent).toContain('contentType="text"');
             expect(mpdContent).toContain('codecs="wvtt"');
@@ -224,19 +235,19 @@ describe('E2E: Convert Pipeline', () => {
         });
 
         it('uploads .vtt subtitle files to storage', async () => {
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             await handler(payload);
 
             const [[, uploadedObjects]] = (storageClient.uploadObjects as jest.Mock).mock.calls as [string, { key: string }[]][];
             const uploadedKeys = uploadedObjects.map(obj => obj.key);
-            expect(uploadedKeys.filter(k => k.endsWith('.vtt'))).toHaveLength(2);
+            expect(uploadedKeys.filter(k => k.includes('subtitles_'))).toHaveLength(2);
         });
     });
 
     describe('Video with chapters', () => {
         const payload = {
             mediaId: '507f1f77bcf86cd799439011',
-            mediaName: 'documentary.mkv',
+            mediaFileName: 'documentary.mkv',
             mediaStorageBucket: 'raw-media',
             mediaRoutingKey: 'uploads/documentary.mkv'
         };
@@ -255,18 +266,11 @@ describe('E2E: Convert Pipeline', () => {
         });
 
         it('generates a chapters.vtt file with correct WebVTT content', async () => {
-            let chaptersVttContent = '';
-            const cleanupSpy = jest.spyOn(convertUtils, 'cleanupWorkspace').mockImplementationOnce(async (workDirPath) => {
-                const chaptersPath = path.join(workDirPath, 'chapters.vtt');
-                if (existsSync(chaptersPath)) {
-                    chaptersVttContent = readFileSync(chaptersPath, 'utf-8');
-                }
-                return rm(workDirPath, { recursive: true, force: true });
-            });
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
+            const result = await handler(payload);
 
-            const handler = convertMediaHandler(storageClient, config);
-            await handler(payload);
-            cleanupSpy.mockRestore();
+            const chaptersPath = path.join(result.workDirPath, 'chapters.vtt');
+            const chaptersVttContent = existsSync(chaptersPath) ? readFileSync(chaptersPath, 'utf-8') : '';
 
             expect(chaptersVttContent).toContain('WEBVTT');
             expect(chaptersVttContent).toContain('00:00:00.000 --> 00:05:00.000');
@@ -276,7 +280,7 @@ describe('E2E: Convert Pipeline', () => {
         });
 
         it('uploads chapters.vtt to storage', async () => {
-            const handler = convertMediaHandler(storageClient, config);
+            const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             await handler(payload);
 
             const [[, uploadedObjects]] = (storageClient.uploadObjects as jest.Mock).mock.calls as [string, { key: string }[]][];

@@ -18,7 +18,11 @@ export type Environment = typeof environments[number];
 
 const environmentVariablesSchema = z.object({
   NODE_ENV: z.enum(environments).default("development"),
-  VOD_BUCKET_NAME: z.string()
+  VOD_BUCKET_NAME: z.string(),
+  THUMBNAIL_INTERVAL_IN_SECONDS: z.coerce.number().default(10),
+  THUMBNAIL_WIDTH: z.coerce.number().default(160),
+  THUMBNAIL_HEIGHT: z.coerce.number().default(90),
+  THUMBNAIL_COLS: z.coerce.number().default(10)
 });
 
 export interface SystemConfig {
@@ -44,7 +48,13 @@ export const getConfig = (env: NodeJS.ProcessEnv): SystemConfig => {
     env: envVars.NODE_ENV,
     consumers: {
       convertMedia: {
-        vodBucketName: envVars.VOD_BUCKET_NAME
+        vodBucketName: envVars.VOD_BUCKET_NAME,
+        thumbnailConfig: {
+          thumbnailIntervalInSeconds: envVars.THUMBNAIL_INTERVAL_IN_SECONDS,
+          thumbnailWidth: envVars.THUMBNAIL_WIDTH,
+          thumbnailHeight: envVars.THUMBNAIL_HEIGHT,
+          thumbnailCols: envVars.THUMBNAIL_COLS,
+        }
       }
     },
   }

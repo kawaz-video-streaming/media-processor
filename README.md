@@ -34,37 +34,10 @@ npm install
 
 ## Environment Variables
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root. Variables consumed by `@ido_kawaz/*` libraries (MongoDB, AMQP, storage, server) are documented in their respective packages. Service-owned variables:
 
-```env
-PORT=8081
-SECURED=false
-
-MONGO_CONNECTION_STRING=mongodb://localhost:27017/media-processor
-AMQP_CONNECTION_STRING=amqp://localhost:5672
-
-AWS_ENDPOINT=http://localhost:9000
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
-AWS_PART_SIZE=134217728
-AWS_MAX_CONCURRENCY=4
-
-VOD_BUCKET_NAME=vod
-UPLOADING_BATCH_SIZE=10
-```
-
-### Variable Notes
-
-- `PORT` (required): Port for the HTTP server
-- `SECURED` (optional, default `false`): When `true`, starts with `https.createServer` (certificate options are not configured in code yet)
-- `MONGO_CONNECTION_STRING` (required): MongoDB URI
-- `AMQP_CONNECTION_STRING` (required): AMQP URI
-- `AWS_ENDPOINT` (required): S3-compatible endpoint URL
-- `AWS_REGION` (optional, default `us-east-1`)
-- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (required)
-- `AWS_PART_SIZE` (optional, default `134217728`)
-- `AWS_MAX_CONCURRENCY` (optional, default `4`)\n- `VOD_BUCKET_NAME` (required): S3 bucket for converted VOD output\n- `UPLOADING_BATCH_SIZE` (required): Number of files to upload in parallel per batch
+- `NODE_ENV` (optional, default `development`): Accepted values: `local`, `development`, `test`. `local` triggers automatic `tmp/` folder creation on startup.
+- `VOD_BUCKET_NAME` (required): S3 bucket name for converted VOD output.
 
 ## Scripts
 
@@ -119,7 +92,7 @@ Payload schema:
 }
 ```
 
-The handler downloads the media from storage, probes it with FFprobe to extract metadata (video/audio/subtitle streams, chapters, duration), converts to DASH via FFmpeg (with any detected ASS subtitle tracks extracted as WebVTT), uploads the output files to the VOD bucket, and cleans up the temporary workspace.
+The handler downloads the media from storage, probes it with FFprobe to extract metadata (video/audio/subtitle streams, chapters, duration), converts to MPEG-DASH via FFmpeg (video re-encoded with h264_nvenc or h264 fallback, audio as aac; ASS/SRT/VTT subtitle tracks extracted as external WebVTT files), uploads all output files to the VOD bucket, and cleans up the temporary workspace.
 
 ## Testing
 
@@ -132,7 +105,9 @@ npm test
 Test suites:
 
 - `src/__tests__/integration.test.ts` — End-to-end integration test for the convert pipeline
-- `src/background/convert/__tests__/handler.test.ts` — Handler unit tests (download, convert, upload, cleanup, error handling)
+- `src/background/convert/__tests__/handler.test.ts` — Handler unit tests (workspace init, logic delegation, error classification, onConvertSuccessHandler)
+- `src/background/convert/__tests__/logic.test.ts` — Conversion pipeline unit tests (download, write, probe, subtitles, chapters, DASH, upload, ordering)
+- `src/background/convert/__tests__/utils.test.ts` — Utility unit tests (metadata extraction, chapter/subtitle parsing)
 - `src/background/convert/__tests__/types.test.ts` — Payload validation tests
 - `src/background/convert/__tests__/index.test.ts` — Consumer factory and binding tests
 
