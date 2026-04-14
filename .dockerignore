@@ -1,0 +1,5 @@
+dist
+.env
+*.md
+.git
+tmp
