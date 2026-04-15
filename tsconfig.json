@@ -5,9 +5,10 @@
   "compilerOptions": {
     /* Language and module resolution options */
     "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["ES2020"],
-
+    "module": "nodenext",
+    "lib": [
+      "ES2020"
+    ],
     /* Emit */
     "outDir": "dist",
     "rootDir": "src",
@@ -20,7 +21,6 @@
     // "mapRoot": "",
     // "sourceRoot": "",
     // "outFile": "",
-
     /* Type checking and strictness */
     "strict": true,
     "noImplicitAny": true,
@@ -33,74 +33,67 @@
     "noImplicitReturns": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "isolatedModules": true,
     // "noFallthroughCasesInSwitch": true,
-
     /* Module resolution, interop and JSON */
-    "moduleResolution": "node",
+    "moduleResolution": "nodenext",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
-
     /* Project and build */
     // "incremental": false,
     // "tsBuildInfoFile": "./.tsbuildinfo",
     // "composite": false,
     // "disableSourceOfProjectReferenceRedirect": false,
-
     /* Emit control */
     "noEmit": false,
     "noEmitOnError": true,
     // "emitDecoratorMetadata": true,
-
     /* JSX */
     // "jsx": "react-jsx",
-
     /* Module interop helpers */
     "importHelpers": false,
-    "downlevelIteration": true,
-
     /* Decorators */
     "experimentalDecorators": false,
     // "emitDecoratorMetadata": false,
-
     /* Paths, roots, and resolution */
     // "baseUrl": ".",
     // "rootDirs": [],
     // "paths": {},
     // "typeRoots": ["node_modules/@types"],
-    // "types": [],
-
+    "types": [
+      "node",
+      "jest"
+    ],
     /* Diagnostics and performance */
     // "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     // "skipDefaultLibCheck": false,
-
     /* Advanced checks */
     "noUncheckedIndexedAccess": false,
     // "noPropertyAccessFromIndexSignature": false,
     // "noImplicitOverride": false,
     // "allowUmdGlobalAccess": false,
-
     /* Emit control for const enums and preservation */
     // "preserveConstEnums": false,
     // "stripInternal": false,
-
     /* Newer/ES features */
     // "useDefineForClassFields": true,
-
     /* Misc */
     // "removeComments": false,
     // "downlevelIteration": false,
-
     /* Node-specific */
     // "resolveJsonModule": true,
     // "allowJs": false,
     // "checkJs": false
-    
     /* NOTE: uncomment any of the commented options above to enable them. */
   },
-
-  "include": ["src"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
   // "references": []
 }

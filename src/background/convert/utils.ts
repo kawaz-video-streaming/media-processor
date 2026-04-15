@@ -86,7 +86,7 @@ export const generateThumbnailsTrack = async (
     const useCuda = await isEncoderAvailable('h264_nvenc');
     const inputOptions = useCuda ? ['-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda'] : [];
     const scaleFilter = useCuda
-        ? `scale_cuda=${thumbnailWidth}:${thumbnailHeight},hwdownload,format=yuv420p`
+        ? `scale_cuda=${thumbnailWidth}:${thumbnailHeight}:format=yuv420p,hwdownload,format=yuv420p`
         : `scale=${thumbnailWidth}:${thumbnailHeight}`;
 
     console.log(`Generating thumbnails: totalFrames=${totalFrames}, rows=${rows}, cols=${thumbnailCols}, cuda=${useCuda}`);

@@ -10,7 +10,7 @@ import * as ffmpegUtils from '../../../utils/ffmpeg';
 import { writeFile } from 'fs/promises';
 
 const mockedRunFfprobe = ffmpegUtils.runFfprobe as jest.MockedFunction<typeof ffmpegUtils.runFfprobe>;
-const mockedRunFfmpeg = ffmpegUtils.runFfmpeg as jest.MockedFunction<typeof ffmpegUtils.runFfmpeg>;
+const mockedRunFfmpegWithInputOptions = ffmpegUtils.runFfmpegWithInputOptions as jest.MockedFunction<typeof ffmpegUtils.runFfmpegWithInputOptions>;
 const mockedWriteFile = writeFile as jest.MockedFunction<typeof writeFile>;
 
 const MEDIA_PATH = '/tmp/workspace/video.mp4';
@@ -57,16 +57,17 @@ describe('generateThumbnailsTrack', () => {
     const thumbnailConfig = { thumbnailIntervalInSeconds: 10, thumbnailWidth: 160, thumbnailHeight: 90, thumbnailCols: 10 };
 
     beforeEach(() => {
-        mockedRunFfmpeg.mockResolvedValue(undefined);
+        mockedRunFfmpegWithInputOptions.mockResolvedValue(undefined);
         mockedWriteFile.mockResolvedValue(undefined);
     });
 
     it('runs ffmpeg to generate sprite sheet from media path', async () => {
         await generateThumbnailsTrack(MEDIA_PATH, WORK_DIR, 60000, thumbnailConfig);
 
-        expect(mockedRunFfmpeg).toHaveBeenCalledWith(
+        expect(mockedRunFfmpegWithInputOptions).toHaveBeenCalledWith(
             MEDIA_PATH,
             expect.stringContaining('thumbnails.jpg'),
+            expect.any(Array),
             expect.arrayContaining(['-vf', expect.stringContaining('fps='), '-frames:v', '1'])
         );
     });

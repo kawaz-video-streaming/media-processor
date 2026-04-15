@@ -10,7 +10,7 @@ FROM nvidia/cuda:12.6.0-base-ubuntu24.04 AS production
 # Copy Node.js 22 from official image
 COPY --from=node:22-slim /usr/local /usr/local
 WORKDIR /app
-# FFmpeg with NVENC/NVDEC support
+# FFmpeg with NVENC/NVDEC support via ffnvcodec
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     wget \
