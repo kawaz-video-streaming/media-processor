@@ -9,7 +9,7 @@ import { pipeline } from 'stream/promises';
 import { isEncoderAvailable, runFfmpeg, runFfmpegWithInputOptions, runFfprobe } from '../../utils/ffmpeg';
 import { collectFilesRecursively, formatPath } from '../../utils/files';
 import { NonVideoMediaError } from './errors';
-import { AudioStream, Convert, ConvertConfig, SubtitleStream, ThumbnailConfig, VideoMetadata, VideoChapter, VideoStream, WorkPaths } from './types';
+import { AudioStream, Convert, ConvertConfig, Progress, SubtitleStream, ThumbnailConfig, VideoMetadata, VideoChapter, VideoStream, WorkPaths } from './types';
 import { AmqpClient } from '@ido_kawaz/amqp-client';
 
 
@@ -197,11 +197,17 @@ const buildDashOutputOptions = (videoEncoder: string, extraVideoOptions: string[
     '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
 ];
 
+const createProgressPublisher = (amqpClient: AmqpClient, mediaId: string, startPct: number, weight: number) =>
+    (pct: number) => {
+        if (pct % (100 / weight) >= 1) return;
+        amqpClient.publish<Progress>('progress', 'progress.media', { mediaId, percentage: startPct + (pct / 100) * weight, status: 'processing' });
+    };
+
 export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string, audioStreams: AudioStream[], amqpClient: AmqpClient, mediaId: string) => {
     const videoEncoder = await isEncoderAvailable('h264_nvenc') ? 'h264_nvenc' : 'libx264';
     const audioDownmixingOption = audioStreams.some(stream => stream.codec !== 'aac' && stream.channels > 2) ? ['-ac', '2'] : [];
     console.log('convering media to dash stream with: ', videoEncoder);
-    await runFfmpeg(mediaPath, mpdPath, buildDashOutputOptions(videoEncoder, audioDownmixingOption), amqpClient, mediaId);
+    await runFfmpeg(mediaPath, mpdPath, buildDashOutputOptions(videoEncoder, audioDownmixingOption), createProgressPublisher(amqpClient, mediaId, 40, 50));
     await unlink(mediaPath);
 }
 

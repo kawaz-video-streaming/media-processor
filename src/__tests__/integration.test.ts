@@ -128,8 +128,7 @@ describe('E2E: Convert Pipeline', () => {
                     '-init_seg_name', 'init_v$RepresentationID$.m4s',
                     '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
                 ],
-                mockAmqpClient,
-                '507f1f77bcf86cd799439011'
+                expect.any(Function)
             );
         });
 
