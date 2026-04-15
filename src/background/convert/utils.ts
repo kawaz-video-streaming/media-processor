@@ -243,6 +243,7 @@ const createStorageObjectsToUpload = (workDirPath: string, mediaId: string, file
     });
 
 export const uploadStreamToStorage = async (
+    amqpClient: AmqpClient,
     storageClient: StorageClient,
     mediaId: string,
     workDirPath: string,
@@ -252,5 +253,6 @@ export const uploadStreamToStorage = async (
     await storageClient.ensureBucket(uploadBucket);
     const filesToUpload = await collectFilesRecursively(workDirPath);
     const storageObjects = createStorageObjectsToUpload(workDirPath, mediaId, filesToUpload);
-    await storageClient.uploadObjects(uploadBucket, storageObjects);
+    const progressPublisher = createProgressPublisher(amqpClient, mediaId, 90, 10);
+    await storageClient.uploadObjects(uploadBucket, storageObjects, undefined, (index, total) => progressPublisher(index / total * 100));
 };

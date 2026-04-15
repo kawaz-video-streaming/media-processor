@@ -22,6 +22,6 @@ export const convertMedia = async (
     await convertMediaToDashStream(mediaPath, mpdPath, videoMetadata.audioStreams, amqpClient, mediaId);
     await addSubtitlesToMpd(mpdPath, subtitlePaths, subtitleStreams);
     amqpClient.publish<Progress>('progress', 'progress.media', { mediaId, percentage: 90, status: 'processing' });
-    await uploadStreamToStorage(storageClient, mediaId, workDirPath, config);
+    await uploadStreamToStorage(amqpClient, storageClient, mediaId, workDirPath, config);
     return videoMetadata;
 }
