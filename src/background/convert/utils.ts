@@ -6,7 +6,7 @@ import { basename, extname, join, relative, resolve } from 'path';
 import { isEmpty, isNil } from 'ramda';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
-import { isEncoderAvailable, runFfmpeg, runFfprobe } from '../../utils/ffmpeg';
+import { isEncoderAvailable, runFfmpeg, runFfmpegWithInputOptions, runFfprobe } from '../../utils/ffmpeg';
 import { collectFilesRecursively, formatPath } from '../../utils/files';
 import { NonVideoMediaError } from './errors';
 import { AudioStream, Convert, ConvertConfig, SubtitleStream, ThumbnailConfig, VideoMetadata, VideoChapter, VideoStream, WorkPaths } from './types';
@@ -83,9 +83,15 @@ export const generateThumbnailsTrack = async (
     const totalFrames = Math.max(1, Math.ceil(durationInMs / 1000 / thumbnailIntervalInSeconds));
     const rows = Math.ceil(totalFrames / thumbnailCols);
 
-    console.log(`Generating thumbnails: totalFrames=${totalFrames}, rows=${rows}, cols=${thumbnailCols}`);
-    await runFfmpeg(mediaPath, spriteSheetPath, [
-        '-vf', `fps=1/${thumbnailIntervalInSeconds},scale=${thumbnailWidth}:${thumbnailHeight},tile=${thumbnailCols}x${rows}`,
+    const useCuda = await isEncoderAvailable('h264_nvenc');
+    const inputOptions = useCuda ? ['-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda'] : [];
+    const scaleFilter = useCuda
+        ? `scale_cuda=${thumbnailWidth}:${thumbnailHeight},hwdownload,format=yuv420p`
+        : `scale=${thumbnailWidth}:${thumbnailHeight}`;
+
+    console.log(`Generating thumbnails: totalFrames=${totalFrames}, rows=${rows}, cols=${thumbnailCols}, cuda=${useCuda}`);
+    await runFfmpegWithInputOptions(mediaPath, spriteSheetPath, inputOptions, [
+        '-vf', `fps=1/${thumbnailIntervalInSeconds},${scaleFilter},tile=${thumbnailCols}x${rows}`,
         '-frames:v', '1',
         '-q:v', '3'
     ]);

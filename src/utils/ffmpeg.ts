@@ -22,6 +22,22 @@ export const runFfprobe = (inputPath: string) =>
             inputPath
         ], (err, stdout) => err ? reject(err) : resolve(JSON.parse(stdout) as FfprobeData)));
 
+export const runFfmpegWithInputOptions = (inputSource: string, outputPath: string, inputOptions: string[], outputOptions: string[] = []) =>
+    new Promise<void>((resolve, reject) =>
+        ffmpeg(inputSource)
+            .inputOptions(inputOptions)
+            .outputOptions(outputOptions)
+            .output(outputPath)
+            .on('error', (err, stdout, stderr) => {
+                console.error('Error during conversion:', err.message);
+                console.error('FFmpeg stdout:', stdout);
+                console.error('FFmpeg stderr:', stderr);
+                reject(err);
+            })
+            .on('end', () => resolve())
+            .run()
+    );
+
 export const runFfmpeg = (inputSource: string, outputPath: string, outputOptions: string[] = [], amqpClient?: AmqpClient, mediaId?: string) =>
     new Promise<void>((resolve, reject) =>
         ffmpeg(inputSource)
