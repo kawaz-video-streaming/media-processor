@@ -239,7 +239,7 @@ const createStorageObjectsToUpload = (workDirPath: string, mediaId: string, file
     filesPaths.map(filePath => {
         const relativePath = relative(workDirPath, filePath);
         const uploadKey = `${mediaId}/${formatPath(relativePath)}`;
-        return { key: uploadKey, data: createReadStream(filePath) };
+        return { key: uploadKey, data: () => createReadStream(filePath) };
     });
 
 export const uploadStreamToStorage = async (
