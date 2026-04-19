@@ -6,10 +6,10 @@ import { basename, extname, join, relative, resolve } from 'path';
 import { isEmpty, isNil } from 'ramda';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
-import { isEncoderAvailable, runFfmpeg, runFfprobe } from '../../utils/ffmpeg';
+import { isEncoderAvailable, runFfmpeg, runFfmpegWithInputOptions, runFfprobe } from '../../utils/ffmpeg';
 import { collectFilesRecursively, formatPath } from '../../utils/files';
 import { NonVideoMediaError } from './errors';
-import { AudioStream, Convert, ConvertConfig, SubtitleStream, ThumbnailConfig, VideoMetadata, VideoChapter, VideoStream, WorkPaths } from './types';
+import { AudioStream, Convert, ConvertConfig, Progress, SubtitleStream, ThumbnailConfig, VideoMetadata, VideoChapter, VideoStream, WorkPaths } from './types';
 import { AmqpClient } from '@ido_kawaz/amqp-client';
 
 
@@ -83,9 +83,15 @@ export const generateThumbnailsTrack = async (
     const totalFrames = Math.max(1, Math.ceil(durationInMs / 1000 / thumbnailIntervalInSeconds));
     const rows = Math.ceil(totalFrames / thumbnailCols);
 
-    console.log(`Generating thumbnails: totalFrames=${totalFrames}, rows=${rows}, cols=${thumbnailCols}`);
-    await runFfmpeg(mediaPath, spriteSheetPath, [
-        '-vf', `fps=1/${thumbnailIntervalInSeconds},scale=${thumbnailWidth}:${thumbnailHeight},tile=${thumbnailCols}x${rows}`,
+    const useCuda = await isEncoderAvailable('h264_nvenc');
+    const inputOptions = useCuda ? ['-hwaccel', 'cuda', '-hwaccel_output_format', 'cuda'] : [];
+    const scaleFilter = useCuda
+        ? `scale_cuda=${thumbnailWidth}:${thumbnailHeight}:format=yuv420p,hwdownload,format=yuv420p`
+        : `scale=${thumbnailWidth}:${thumbnailHeight}`;
+
+    console.log(`Generating thumbnails: totalFrames=${totalFrames}, rows=${rows}, cols=${thumbnailCols}, cuda=${useCuda}`);
+    await runFfmpegWithInputOptions(mediaPath, spriteSheetPath, inputOptions, [
+        '-vf', `fps=1/${thumbnailIntervalInSeconds},${scaleFilter},tile=${thumbnailCols}x${rows}`,
         '-frames:v', '1',
         '-q:v', '3'
     ]);
@@ -191,11 +197,17 @@ const buildDashOutputOptions = (videoEncoder: string, extraVideoOptions: string[
     '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
 ];
 
+const createProgressPublisher = (amqpClient: AmqpClient, mediaId: string, startPct: number, weight: number) =>
+    (pct: number) => {
+        if (pct % (100 / weight) >= 1) return;
+        amqpClient.publish<Progress>('progress', 'progress.media', { mediaId, percentage: startPct + (pct / 100) * weight, status: 'processing' });
+    };
+
 export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string, audioStreams: AudioStream[], amqpClient: AmqpClient, mediaId: string) => {
     const videoEncoder = await isEncoderAvailable('h264_nvenc') ? 'h264_nvenc' : 'libx264';
     const audioDownmixingOption = audioStreams.some(stream => stream.codec !== 'aac' && stream.channels > 2) ? ['-ac', '2'] : [];
     console.log('convering media to dash stream with: ', videoEncoder);
-    await runFfmpeg(mediaPath, mpdPath, buildDashOutputOptions(videoEncoder, audioDownmixingOption), amqpClient, mediaId);
+    await runFfmpeg(mediaPath, mpdPath, buildDashOutputOptions(videoEncoder, audioDownmixingOption), createProgressPublisher(amqpClient, mediaId, 40, 50));
     await unlink(mediaPath);
 }
 
@@ -227,10 +239,11 @@ const createStorageObjectsToUpload = (workDirPath: string, mediaId: string, file
     filesPaths.map(filePath => {
         const relativePath = relative(workDirPath, filePath);
         const uploadKey = `${mediaId}/${formatPath(relativePath)}`;
-        return { key: uploadKey, data: createReadStream(filePath) };
+        return { key: uploadKey, data: () => createReadStream(filePath) };
     });
 
 export const uploadStreamToStorage = async (
+    amqpClient: AmqpClient,
     storageClient: StorageClient,
     mediaId: string,
     workDirPath: string,
@@ -240,5 +253,6 @@ export const uploadStreamToStorage = async (
     await storageClient.ensureBucket(uploadBucket);
     const filesToUpload = await collectFilesRecursively(workDirPath);
     const storageObjects = createStorageObjectsToUpload(workDirPath, mediaId, filesToUpload);
-    await storageClient.uploadObjects(uploadBucket, storageObjects);
+    const progressPublisher = createProgressPublisher(amqpClient, mediaId, 90, 10);
+    await storageClient.uploadObjects(uploadBucket, storageObjects, undefined, (index, total) => progressPublisher(index / total * 100));
 };

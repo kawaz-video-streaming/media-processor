@@ -38,6 +38,10 @@ Create a `.env` file in the project root. Variables consumed by `@ido_kawaz/*` l
 
 - `NODE_ENV` (optional, default `development`): Accepted values: `local`, `development`, `test`. `local` triggers automatic `tmp/` folder creation on startup.
 - `VOD_BUCKET_NAME` (required): S3 bucket name for converted VOD output.
+- `THUMBNAIL_INTERVAL_IN_SECONDS` (optional, default `10`): Seconds between captured thumbnail frames.
+- `THUMBNAIL_WIDTH` (optional, default `160`): Width in pixels of each thumbnail tile.
+- `THUMBNAIL_HEIGHT` (optional, default `90`): Height in pixels of each thumbnail tile.
+- `THUMBNAIL_COLS` (optional, default `10`): Number of columns in the thumbnail sprite sheet.
 
 ## Scripts
 
@@ -86,13 +90,13 @@ Payload schema:
 ```json
 {
   "mediaId": "string (MongoDB ObjectId)",
-  "mediaName": "string",
+  "mediaFileName": "string",
   "mediaStorageBucket": "string",
   "mediaRoutingKey": "string"
 }
 ```
 
-The handler downloads the media from storage, probes it with FFprobe to extract metadata (video/audio/subtitle streams, chapters, duration), converts to MPEG-DASH via FFmpeg (video re-encoded with h264_nvenc or h264 fallback, audio as aac; ASS/SRT/VTT subtitle tracks extracted as external WebVTT files), uploads all output files to the VOD bucket, and cleans up the temporary workspace.
+The handler downloads the media from storage, probes it with FFprobe to extract metadata (video/audio/subtitle streams, chapters, duration), generates ASS/SRT/VTT subtitle tracks as external WebVTT files, a chapters WebVTT file (if chapters exist), and a thumbnail sprite sheet (`thumbnails.jpg`) with a WebVTT index (`thumbnails.vtt`), converts to MPEG-DASH via FFmpeg (video re-encoded with h264_nvenc or libx264 fallback, audio as aac), uploads all output files to the VOD bucket under the `<mediaId>/` key prefix, and cleans up the temporary workspace. On success publishes a `progress.media` message with `percentage: 100`, `status: 'completed'`, and a `metadata` object containing `playUrl`, `thumbnailsUrl`, optional `chaptersUrl`/`chapters`, `subtitleStreams`, and `audioStreams`.
 
 ## Testing
 

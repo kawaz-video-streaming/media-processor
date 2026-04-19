@@ -12,13 +12,13 @@ class InvalidConfigError extends Error {
   }
 }
 
-const environments = ["local", "development", "test"] as const;
+const environments = ["local", "development", "test", "production"] as const;
 
 export type Environment = typeof environments[number];
 
 const environmentVariablesSchema = z.object({
   NODE_ENV: z.enum(environments).default("development"),
-  VOD_BUCKET_NAME: z.string(),
+  VOD_STORAGE_BUCKET: z.string(),
   THUMBNAIL_INTERVAL_IN_SECONDS: z.coerce.number().default(10),
   THUMBNAIL_WIDTH: z.coerce.number().default(160),
   THUMBNAIL_HEIGHT: z.coerce.number().default(90),
@@ -48,7 +48,7 @@ export const getConfig = (env: NodeJS.ProcessEnv): SystemConfig => {
     env: envVars.NODE_ENV,
     consumers: {
       convertMedia: {
-        vodBucketName: envVars.VOD_BUCKET_NAME,
+        vodBucketName: envVars.VOD_STORAGE_BUCKET,
         thumbnailConfig: {
           thumbnailIntervalInSeconds: envVars.THUMBNAIL_INTERVAL_IN_SECONDS,
           thumbnailWidth: envVars.THUMBNAIL_WIDTH,

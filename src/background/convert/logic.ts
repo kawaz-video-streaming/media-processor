@@ -18,10 +18,10 @@ export const convertMedia = async (
     const subtitlePaths = await generateSubtitleTracks(subtitleStreams, workDirPath, mediaPath);
     await generateChaptersTrack(chapters, workDirPath);
     await generateThumbnailsTrack(mediaPath, workDirPath, videoMetadata.durationInMs, config.thumbnailConfig);
-    amqpClient.publish<Progress>('progress', 'progress.media', { mediaId, percentage: 50, status: 'processing' });
+    amqpClient.publish<Progress>('progress', 'progress.media', { mediaId, percentage: 40, status: 'processing' });
     await convertMediaToDashStream(mediaPath, mpdPath, videoMetadata.audioStreams, amqpClient, mediaId);
     await addSubtitlesToMpd(mpdPath, subtitlePaths, subtitleStreams);
-    amqpClient.publish<Progress>('progress', 'progress.media', { mediaId, percentage: 85, status: 'processing' });
-    await uploadStreamToStorage(storageClient, mediaId, workDirPath, config);
+    amqpClient.publish<Progress>('progress', 'progress.media', { mediaId, percentage: 90, status: 'processing' });
+    await uploadStreamToStorage(amqpClient, storageClient, mediaId, workDirPath, config);
     return videoMetadata;
 }

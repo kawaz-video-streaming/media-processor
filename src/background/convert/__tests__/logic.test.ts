@@ -164,6 +164,7 @@ describe('convertMedia', () => {
         await convertMedia(mockAmqpClient, config, mockStorageClient, payload, workPaths);
 
         expect(mockedUploadStream).toHaveBeenCalledWith(
+            mockAmqpClient,
             mockStorageClient,
             '507f1f77bcf86cd799439011',
             workPaths.workDirPath,

@@ -1,7 +1,5 @@
-import { AmqpClient } from '@ido_kawaz/amqp-client';
 import { execFile } from 'child_process';
 import ffmpeg, { FfprobeData } from 'fluent-ffmpeg';
-import { Progress } from '../background/convert/types';
 import { isNotNil } from 'ramda';
 
 export const isEncoderAvailable = (encoder: string): Promise<boolean> =>
@@ -22,20 +20,32 @@ export const runFfprobe = (inputPath: string) =>
             inputPath
         ], (err, stdout) => err ? reject(err) : resolve(JSON.parse(stdout) as FfprobeData)));
 
-export const runFfmpeg = (inputSource: string, outputPath: string, outputOptions: string[] = [], amqpClient?: AmqpClient, mediaId?: string) =>
+export const runFfmpegWithInputOptions = (inputSource: string, outputPath: string, inputOptions: string[], outputOptions: string[] = []) =>
+    new Promise<void>((resolve, reject) =>
+        ffmpeg(inputSource)
+            .inputOptions(inputOptions)
+            .outputOptions(outputOptions)
+            .output(outputPath)
+            .on('error', (err, stdout, stderr) => {
+                console.error('Error during conversion:', err.message);
+                console.error('FFmpeg stdout:', stdout);
+                console.error('FFmpeg stderr:', stderr);
+                reject(err);
+            })
+            .on('end', () => resolve())
+            .run()
+    );
+
+export const runFfmpeg = (inputSource: string, outputPath: string, outputOptions: string[] = [], onProgress?: (pct: number) => void) =>
     new Promise<void>((resolve, reject) =>
         ffmpeg(inputSource)
             .outputOptions(outputOptions)
             .output(outputPath)
             .on('progress', progress => {
-                if (isNotNil(progress.percent)) {
-                    const logProgress = isNotNil(mediaId) && isNotNil(amqpClient);
+                if (onProgress && isNotNil(progress.percent)) {
                     const validProgress = !isNaN(progress.percent) && progress.percent >= 0 && progress.percent <= 100;
-                    const enoughProgress = progress.percent % 17 < 1;
-                    const shouldLog = logProgress && validProgress && enoughProgress;
-                    if (shouldLog) {
-                        const percentage = 50 + (progress.percent / 100) * 35;
-                        amqpClient.publish<Progress>('progress', 'progress.media', { mediaId, percentage, status: 'processing' });
+                    if (validProgress) {
+                        onProgress(progress.percent);
                     }
                 }
             })
