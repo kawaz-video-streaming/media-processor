@@ -12,7 +12,7 @@ class InvalidConfigError extends Error {
   }
 }
 
-const environments = ["local", "development", "test"] as const;
+const environments = ["local", "development", "test", "production"] as const;
 
 export type Environment = typeof environments[number];
 
