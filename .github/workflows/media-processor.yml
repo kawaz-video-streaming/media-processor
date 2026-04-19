@@ -67,7 +67,7 @@ jobs:
             --from-literal=PORT=${{ vars.PORT }} \
             --from-literal=AWS_ENDPOINT=${{ vars.AWS_ENDPOINT }} \
             --from-literal=AWS_REGION=${{ vars.AWS_REGION }} \
-            --from-literal=VOD_BUCKET_NAME=${{ vars.VOD_BUCKET_NAME }} \
+            --from-literal=VOD_STORAGE_BUCKET=${{ vars.VOD_STORAGE_BUCKET }} \
             --from-literal=THUMBNAIL_INTERVAL_IN_SECONDS=${{ vars.THUMBNAIL_INTERVAL_IN_SECONDS }} \
             --from-literal=THUMBNAIL_WIDTH=${{ vars.THUMBNAIL_WIDTH }} \
             --from-literal=THUMBNAIL_HEIGHT=${{ vars.THUMBNAIL_HEIGHT }} \
