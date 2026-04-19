@@ -42,7 +42,7 @@ describe('E2E: Convert Pipeline', () => {
         );
         // Destroy ReadStreams so file handles are released before cleanup runs (Windows)
         (storageClient.uploadObjects as jest.Mock).mockImplementation((_bucket, objects: any[]) => {
-            objects?.forEach(obj => obj?.data?.destroy());
+            objects?.forEach(obj => obj?.data?.()?.destroy());
             return Promise.resolve();
         });
         (storageClient.ensureBucket as jest.Mock).mockResolvedValue(undefined);
@@ -156,7 +156,7 @@ describe('E2E: Convert Pipeline', () => {
 
         it('throws ConversionFatalError with workDirPath when an upload fails', async () => {
             (storageClient.uploadObjects as jest.Mock).mockImplementation((_bucket, objects: any[]) => {
-                objects?.forEach(obj => obj?.data?.destroy());
+                objects?.forEach(obj => obj?.data?.()?.destroy());
                 return Promise.reject(new Error('Upload failed'));
             });
 
