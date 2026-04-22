@@ -72,6 +72,7 @@ jobs:
             --from-literal=THUMBNAIL_WIDTH=${{ vars.THUMBNAIL_WIDTH }} \
             --from-literal=THUMBNAIL_HEIGHT=${{ vars.THUMBNAIL_HEIGHT }} \
             --from-literal=THUMBNAIL_COLS=${{ vars.THUMBNAIL_COLS }} \
+            --from-literal=AMQP_PREFETCH_COUNT=${{ vars.AMQP_PREFETCH_COUNT }} \
             --namespace kawaz \
             --dry-run=client -o yaml | kubectl apply -f -
 
