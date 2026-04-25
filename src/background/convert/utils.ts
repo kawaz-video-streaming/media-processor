@@ -180,7 +180,7 @@ export const getVideoMetadata = async (mediaPath: string): Promise<VideoMetadata
 const buildDashOutputOptions = (videoEncoder: string, extraVideoOptions: string[] = []) => [
     '-f dash',
     '-avoid_negative_ts', 'make_zero',
-    '-force_key_frames', 'expr:gte(t,n_forced*15)',
+    '-force_key_frames', 'expr:gte(t,n_forced*4)',
     '-map 0:v',
     '-map 0:a?',
     '-c:v', videoEncoder,
@@ -192,7 +192,7 @@ const buildDashOutputOptions = (videoEncoder: string, extraVideoOptions: string[
     '-af', 'aresample=async=1:first_pts=0',
     '-use_template', '1',
     '-use_timeline', '1',
-    '-seg_duration', '15',
+    '-seg_duration', '4',
     '-init_seg_name', 'init_v$RepresentationID$.m4s',
     '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
 ];
