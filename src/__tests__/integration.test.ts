@@ -113,7 +113,7 @@ describe('E2E: Convert Pipeline', () => {
                 [
                     '-f dash',
                     '-avoid_negative_ts', 'make_zero',
-                    '-force_key_frames', 'expr:gte(t,n_forced*15)',
+                    '-force_key_frames', 'expr:gte(t,n_forced*4)',
                     '-map 0:v',
                     '-map 0:a?',
                     '-c:v', 'libx264',
@@ -124,7 +124,7 @@ describe('E2E: Convert Pipeline', () => {
                     '-af', 'aresample=async=1:first_pts=0',
                     '-use_template', '1',
                     '-use_timeline', '1',
-                    '-seg_duration', '15',
+                    '-seg_duration', '4',
                     '-init_seg_name', 'init_v$RepresentationID$.m4s',
                     '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
                 ],
@@ -197,7 +197,7 @@ describe('E2E: Convert Pipeline', () => {
             expect(dashCall![2]).toEqual([
                 '-f dash',
                 '-avoid_negative_ts', 'make_zero',
-                '-force_key_frames', 'expr:gte(t,n_forced*15)',
+                '-force_key_frames', 'expr:gte(t,n_forced*4)',
                 '-map 0:v',
                 '-map 0:a?',
                 '-c:v', 'libx264',
@@ -208,7 +208,7 @@ describe('E2E: Convert Pipeline', () => {
                 '-af', 'aresample=async=1:first_pts=0',
                 '-use_template', '1',
                 '-use_timeline', '1',
-                '-seg_duration', '15',
+                '-seg_duration', '4',
                 '-init_seg_name', 'init_v$RepresentationID$.m4s',
                 '-media_seg_name', 'seg_v$RepresentationID$_$Number%03d$.m4s'
             ]);
