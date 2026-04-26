@@ -140,7 +140,7 @@ describe('E2E: Convert Pipeline', () => {
 
             expect(storageClient.ensureBucket).toHaveBeenCalledWith('vod-bucket');
 
-            const [[, uploadedObjects]] = (storageClient.uploadObjects as jest.Mock).mock.calls as [string, { key: string }[]][];
+            const [[, uploadedObjects]] = (storageClient.uploadObjects as jest.Mock).mock.calls as [string, { key: string; }[]][];
             const uploadedKeys = uploadedObjects.map(obj => obj.key);
 
             expect(uploadedKeys.some(k => k.endsWith('output.mpd'))).toBe(true);
@@ -203,6 +203,8 @@ describe('E2E: Convert Pipeline', () => {
                 '-map 0:v',
                 '-map 0:a?',
                 '-c:v', 'libx264',
+                '-vf', 'setpts=PTS-STARTPTS',
+                '-sc_threshold', '0',
                 '-pix_fmt', 'yuv420p',
                 '-profile:v', 'main',
                 '-level:v', '4.0',
@@ -239,7 +241,7 @@ describe('E2E: Convert Pipeline', () => {
             const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             await handler(payload);
 
-            const [[, uploadedObjects]] = (storageClient.uploadObjects as jest.Mock).mock.calls as [string, { key: string }[]][];
+            const [[, uploadedObjects]] = (storageClient.uploadObjects as jest.Mock).mock.calls as [string, { key: string; }[]][];
             const uploadedKeys = uploadedObjects.map(obj => obj.key);
             expect(uploadedKeys.filter(k => k.includes('subtitles_'))).toHaveLength(2);
         });
@@ -284,7 +286,7 @@ describe('E2E: Convert Pipeline', () => {
             const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             await handler(payload);
 
-            const [[, uploadedObjects]] = (storageClient.uploadObjects as jest.Mock).mock.calls as [string, { key: string }[]][];
+            const [[, uploadedObjects]] = (storageClient.uploadObjects as jest.Mock).mock.calls as [string, { key: string; }[]][];
             const uploadedKeys = uploadedObjects.map(obj => obj.key);
             expect(uploadedKeys.some(k => k.endsWith('chapters.vtt'))).toBe(true);
         });
