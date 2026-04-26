@@ -185,6 +185,8 @@ const buildDashOutputOptions = (videoEncoder: string, extraVideoOptions: string[
     '-map 0:a?',
     '-c:v', videoEncoder,
     ...extraVideoOptions,
+    '-vf', 'setpts=PTS-STARTPTS',
+    '-sc_threshold', '0',
     '-pix_fmt', 'yuv420p',
     '-profile:v', 'main',
     '-level:v', '4.0',

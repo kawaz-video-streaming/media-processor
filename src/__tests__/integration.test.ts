@@ -117,6 +117,8 @@ describe('E2E: Convert Pipeline', () => {
                     '-map 0:v',
                     '-map 0:a?',
                     '-c:v', 'libx264',
+                    '-vf', 'setpts=PTS-STARTPTS',
+                    '-sc_threshold', '0',
                     '-pix_fmt', 'yuv420p',
                     '-profile:v', 'main',
                     '-level:v', '4.0',
