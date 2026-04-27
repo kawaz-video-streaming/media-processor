@@ -45,12 +45,12 @@ This is a headless async media processing service. The HTTP server exists only f
 **Media conversion pipeline** (`src/background/convert/`):
 1. Receive AMQP message on queue `media-processor-convert` (exchange: `convert`, topic: `convert.media`)
 2. Validate payload with Zod — `mediaId` (MongoDB ObjectId), `mediaFileName`, `mediaStorageBucket`, `mediaRoutingKey`
-3. Create isolated `tmp/<mediaId>-<random>/` workspace; download source media from S3 via `storageClient.downloadObject` and write to disk
-4. Probe media with FFprobe (`getVideoMetadata`) to extract video/audio/subtitle streams (audio includes `codec` and `channels`), chapters, and duration; throws `NonVideoMediaError` if no video stream found. Publishes `{ mediaId, percentage: 30, status: 'processing' }` progress after download.
-5. Extract any detected ASS/SRT/VTT subtitle streams as `.vtt` files with FFmpeg (`generateSubtitleTracks`); generate `chapters.vtt` WebVTT file if chapters exist (`generateChaptersTrack`); generate a thumbnail sprite sheet (`thumbnails.jpg`) and its WebVTT index (`thumbnails.vtt`) via FFmpeg (`generateThumbnailsTrack`, configurable via env vars). Publishes `{ mediaId, percentage: 50, status: 'processing' }` before DASH conversion.
-6. Convert to MPEG-DASH with FFmpeg (`-f dash`, 15s segments, forced keyframes every 15s, H.264 main profile level 4.0); video re-encoded with h264_nvenc if available, else libx264; audio downmixed to 2ch if any stream is non-aac multi-channel; aac re-encode. Publishes granular percentage updates (50–85%) during FFmpeg progress events. Source file deleted after conversion.
-7. Publishes `{ mediaId, percentage: 85, status: 'processing' }` before upload. Upload all workspace files to VOD S3 bucket under `<mediaId>/` key prefix via `storageClient.uploadObjects` (bulk upload).
-8. On success: `onConvertSuccessHandler` publishes to `progress.media` with `{ mediaId, percentage: 100, status: 'completed', metadata }` where `metadata` includes `playUrl` (`<mediaId>/output.mpd`), `thumbnailsUrl` (`<mediaId>/thumbnails.vtt`), optional `chaptersUrl`/`chapters` (if chapters present), `subtitleStreams` (index stripped), `audioStreams` (`codec`/`channels` stripped). On `StorageError`: throws `ConversionRetriableError` (AMQP retries, workspace cleaned up by `handleRetriableError` hook). On any other error: throws `ConversionFatalError` (publishes `{ mediaId, percentage: 0, status: 'failed' }`, workspace cleaned up by `handleFatalError` hook). Both error classes carry `workDirPath` for deferred cleanup.
+3. Create isolated `tmp/<mediaId>-<random>/` workspace; download source media from S3 via `storageClient.downloadObject` and write to disk. Publishes `{ mediaId, percentage: 30, status: 'processing' }` after write.
+4. Probe media with FFprobe (`getVideoMetadata`) to extract video/audio/subtitle streams (audio includes `codec` and `channels`), chapters, and duration; throws `NonVideoMediaError` if no video stream found.
+5. Extract any detected ASS/SRT/VTT subtitle streams as `.vtt` files with FFmpeg (`generateSubtitleTracks`); generate `chapters.vtt` WebVTT file if chapters exist (`generateChaptersTrack`); generate a thumbnail sprite sheet (`thumbnails.jpg`) and its WebVTT index (`thumbnails.vtt`) via FFmpeg (`generateThumbnailsTrack`, configurable via env vars). Thumbnail generation uses CUDA acceleration (`scale_cuda` + `hwdownload`) when `h264_nvenc` is available, otherwise CPU `scale`. Publishes `{ mediaId, percentage: 40, status: 'processing' }` before DASH conversion.
+6. Convert to MPEG-DASH with FFmpeg (`-f dash`, 4s segments, forced keyframes every 4s via `expr:gte(t,n_forced*4)`, H.264 main profile level 4.0); video re-encoded with `h264_nvenc` if available, else `libx264`; audio always re-encoded as AAC with `aresample=async=1:first_pts=0`; downmixed to 2ch only when at least one stream is both non-AAC and has more than 2 channels. Publishes throttled percentage updates (40–90%) during FFmpeg progress events (throttled to ~1% output increments). Source file deleted after conversion.
+7. Patches `output.mpd` with `<AdaptationSet>` entries for each subtitle track. Publishes `{ mediaId, percentage: 90, status: 'processing' }` before upload. Upload all workspace files to VOD S3 bucket under `<mediaId>/` key prefix via `storageClient.uploadObjects` (bulk upload); upload progress published as 90–100% (throttled).
+8. On success: `onConvertSuccessHandler` publishes to `progress.media` with `{ mediaId, percentage: 100, status: 'completed', metadata }` where `metadata` includes `playUrl` (`<mediaId>/output.mpd`), `thumbnailsUrl` (`<mediaId>/thumbnails.vtt`), optional `chaptersUrl`/`chapters` (if chapters present), `subtitleStreams` (index stripped), `audioStreams` (`codec`/`channels` stripped), plus `name`, `durationInMs`, and `videoStreams` from probe output. Workspace cleaned up after success publish. On `StorageError`: throws `ConversionRetriableError` (AMQP retries with `retryCount=3`, workspace cleaned up by `handleRetriableError` hook). On any other error: throws `ConversionFatalError` (publishes `{ mediaId, percentage: 0, status: 'failed' }`, workspace cleaned up by `handleFatalError` hook). Both error classes carry `workDirPath` for deferred cleanup.
 
 **Key directories:**
 - `src/background/convert/` — entire conversion consumer: `handler.ts` orchestrates, `logic.ts` runs the conversion pipeline, `utils.ts` implements each step, `types.ts` has Zod schema + interfaces, `errors.ts` has domain errors, `binding.ts` has AMQP queue/exchange/topic constants
@@ -84,7 +84,7 @@ AWS_ENDPOINT=http://127.0.0.1:9000
 AWS_ACCESS_KEY_ID=dummyuser
 AWS_SECRET_ACCESS_KEY=dummypassword
 AMQP_CONNECTION_STRING=amqp://kawaz:kawaz@localhost:5672
-VOD_BUCKET_NAME=vod
+VOD_STORAGE_BUCKET=vod
 # Thumbnail generation (all optional — defaults shown)
 THUMBNAIL_INTERVAL_IN_SECONDS=10
 THUMBNAIL_WIDTH=160
@@ -92,7 +92,7 @@ THUMBNAIL_HEIGHT=90
 THUMBNAIL_COLS=10
 ```
 
-`NODE_ENV=local` triggers automatic `tmp/` folder creation at startup. `VOD_BUCKET_NAME` is Zod-validated at startup and will throw `InvalidConfigError` with a descriptive message if missing. The four `THUMBNAIL_*` vars are optional with the defaults above.
+`NODE_ENV=local` triggers automatic `tmp/` folder creation at startup. Accepted values: `local`, `development`, `test`, `production`. `VOD_STORAGE_BUCKET` is Zod-validated at startup and will throw `InvalidConfigError` with a descriptive message if missing. The four `THUMBNAIL_*` vars are optional with the defaults above.
 
 ## Testing Notes
 
