@@ -36,8 +36,8 @@ npm install
 
 Create a `.env` file in the project root. Variables consumed by `@ido_kawaz/*` libraries (MongoDB, AMQP, storage, server) are documented in their respective packages. Service-owned variables:
 
-- `NODE_ENV` (optional, default `development`): Accepted values: `local`, `development`, `test`. `local` triggers automatic `tmp/` folder creation on startup.
-- `VOD_BUCKET_NAME` (required): S3 bucket name for converted VOD output.
+- `NODE_ENV` (optional, default `development`): Accepted values: `local`, `development`, `test`, `production`. `local` triggers automatic `tmp/` folder creation on startup.
+- `VOD_STORAGE_BUCKET` (required): S3 bucket name for converted VOD output.
 - `THUMBNAIL_INTERVAL_IN_SECONDS` (optional, default `10`): Seconds between captured thumbnail frames.
 - `THUMBNAIL_WIDTH` (optional, default `160`): Width in pixels of each thumbnail tile.
 - `THUMBNAIL_HEIGHT` (optional, default `90`): Height in pixels of each thumbnail tile.
@@ -96,7 +96,7 @@ Payload schema:
 }
 ```
 
-The handler downloads the media from storage, probes it with FFprobe to extract metadata (video/audio/subtitle streams, chapters, duration), generates ASS/SRT/VTT subtitle tracks as external WebVTT files, a chapters WebVTT file (if chapters exist), and a thumbnail sprite sheet (`thumbnails.jpg`) with a WebVTT index (`thumbnails.vtt`), converts to MPEG-DASH via FFmpeg (video re-encoded with h264_nvenc or libx264 fallback, audio as aac), uploads all output files to the VOD bucket under the `<mediaId>/` key prefix, and cleans up the temporary workspace. On success publishes a `progress.media` message with `percentage: 100`, `status: 'completed'`, and a `metadata` object containing `playUrl`, `thumbnailsUrl`, optional `chaptersUrl`/`chapters`, `subtitleStreams`, and `audioStreams`.
+The handler downloads the media from storage, probes it with FFprobe to extract metadata (video/audio/subtitle streams, chapters, duration), generates ASS/SRT/VTT subtitle tracks as external WebVTT files, a chapters WebVTT file (if chapters exist), and a thumbnail sprite sheet (`thumbnails.jpg`) with a WebVTT index (`thumbnails.vtt`) (using CUDA acceleration when `h264_nvenc` is available, otherwise CPU), converts to MPEG-DASH via FFmpeg (4-second segments, keyframes every 4s, H.264 main/4.0; video re-encoded with `h264_nvenc` or `libx264` fallback; audio as AAC, downmixed to 2ch only when a stream is non-AAC and multi-channel), patches `output.mpd` with subtitle `AdaptationSet` entries, uploads all output files to the VOD bucket under the `<mediaId>/` key prefix, and cleans up the temporary workspace. On success publishes a `progress.media` message with `percentage: 100`, `status: 'completed'`, and a `metadata` object containing `playUrl`, `thumbnailsUrl`, optional `chaptersUrl`/`chapters`, `subtitleStreams` (index stripped), `audioStreams` (codec/channels stripped), `name`, `durationInMs`, and `videoStreams`. Progress events are published at 30% (after download), 40% (before DASH), 40–90% (FFmpeg, throttled), 90% (before upload), 90–100% (upload, throttled), and 100% (completed).
 
 ## Testing
 
