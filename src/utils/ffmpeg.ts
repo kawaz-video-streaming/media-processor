@@ -20,12 +20,20 @@ export const runFfprobe = (inputPath: string) =>
             inputPath
         ], (err, stdout) => err ? reject(err) : resolve(JSON.parse(stdout) as FfprobeData)));
 
-export const runFfmpegWithInputOptions = (inputSource: string, outputPath: string, inputOptions: string[], outputOptions: string[] = []) =>
+export const runFfmpegWithInputOptions = (inputSource: string, outputPath: string, inputOptions: string[], outputOptions: string[] = [], onProgress?: (pct: number) => void) =>
     new Promise<void>((resolve, reject) =>
         ffmpeg(inputSource)
             .inputOptions(inputOptions)
             .outputOptions(outputOptions)
             .output(outputPath)
+            .on('progress', progress => {
+                if (onProgress && isNotNil(progress.percent)) {
+                    const validProgress = !isNaN(progress.percent) && progress.percent >= 0 && progress.percent <= 100;
+                    if (validProgress) {
+                        onProgress(progress.percent);
+                    }
+                }
+            })
             .on('error', (err, stdout, stderr) => {
                 console.error('Error during conversion:', err.message);
                 console.error('FFmpeg stdout:', stdout);
