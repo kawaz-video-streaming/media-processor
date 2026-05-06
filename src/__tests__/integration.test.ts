@@ -13,6 +13,7 @@ jest.mock('../utils/ffmpeg');
 
 const mockedRunFfmpeg = ffmpegUtils.runFfmpeg as jest.MockedFunction<typeof ffmpegUtils.runFfmpeg>;
 const mockedRunFfprobe = ffmpegUtils.runFfprobe as jest.MockedFunction<typeof ffmpegUtils.runFfprobe>;
+const mockedRunFfmpegWithInputOptions = ffmpegUtils.runFfmpegWithInputOptions as jest.MockedFunction<typeof ffmpegUtils.runFfmpegWithInputOptions>;
 
 describe('E2E: Convert Pipeline', () => {
     const mockAmqpClient = {
@@ -57,14 +58,18 @@ describe('E2E: Convert Pipeline', () => {
 
         // Simulate FFmpeg output: create fake files so upload step has real files to collect
         mockedRunFfmpeg.mockImplementation(async (_input, outputPath) => {
+            if (outputPath.endsWith('.vtt')) {
+                await writeFile(outputPath, 'WEBVTT\n\n');
+            }
+        });
+
+        mockedRunFfmpegWithInputOptions.mockImplementation(async (_input, outputPath) => {
             if (outputPath.endsWith('.mpd')) {
                 const dir = path.dirname(outputPath);
                 await writeFile(outputPath,
                     '<MPD>\n\t<Period id="0">\n\t\t<AdaptationSet id="0" contentType="video"/>\n\t</Period>\n</MPD>');
                 await writeFile(path.join(dir, 'init_0.m4s'), Buffer.alloc(0));
                 await writeFile(path.join(dir, 'seg_0_001.m4s'), Buffer.alloc(0));
-            } else if (outputPath.endsWith('.vtt')) {
-                await writeFile(outputPath, 'WEBVTT\n\n');
             } else if (outputPath.endsWith('.jpg')) {
                 await writeFile(outputPath, Buffer.alloc(0));
             }
@@ -107,9 +112,10 @@ describe('E2E: Convert Pipeline', () => {
             const handler = convertMediaHandler(mockAmqpClient, storageClient, config);
             await handler(payload);
 
-            expect(mockedRunFfmpeg).toHaveBeenCalledWith(
+            expect(mockedRunFfmpegWithInputOptions).toHaveBeenCalledWith(
                 expect.stringContaining('test-video.mp4'),
                 expect.stringContaining('output.mpd'),
+                [],
                 [
                     '-f dash',
                     '-avoid_negative_ts', 'make_zero',
@@ -195,8 +201,8 @@ describe('E2E: Convert Pipeline', () => {
             await handler(payload);
 
             // DASH call must not contain subtitle maps or mov_text
-            const dashCall = mockedRunFfmpeg.mock.calls.find(([, out]) => out.endsWith('.mpd'));
-            expect(dashCall![2]).toEqual([
+            const dashCall = mockedRunFfmpegWithInputOptions.mock.calls.find(([, out]) => out.endsWith('.mpd'));
+            expect(dashCall![3]).toEqual([
                 '-f dash',
                 '-avoid_negative_ts', 'make_zero',
                 '-force_key_frames', 'expr:gte(t,n_forced*4)',
