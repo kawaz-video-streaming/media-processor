@@ -208,8 +208,9 @@ const createProgressPublisher = (amqpClient: AmqpClient, mediaId: string, startP
 export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string, audioStreams: AudioStream[], amqpClient: AmqpClient, mediaId: string) => {
     const videoEncoder = await isEncoderAvailable('h264_nvenc') ? 'h264_nvenc' : 'libx264';
     const audioDownmixingOption = audioStreams.some(stream => stream.codec !== 'aac' && stream.channels > 2) ? ['-ac', '2'] : [];
+    const inputOptions = videoEncoder === 'h264_nvenc' ? ['-hwaccel', 'cuda'] : [];
     console.log('convering media to dash stream with: ', videoEncoder);
-    await runFfmpeg(mediaPath, mpdPath, buildDashOutputOptions(videoEncoder, audioDownmixingOption), createProgressPublisher(amqpClient, mediaId, 40, 50));
+    await runFfmpegWithInputOptions(mediaPath, mpdPath, inputOptions, buildDashOutputOptions(videoEncoder, audioDownmixingOption), createProgressPublisher(amqpClient, mediaId, 40, 50));
     await unlink(mediaPath);
 }
 
