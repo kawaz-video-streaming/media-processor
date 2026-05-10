@@ -207,6 +207,11 @@ export const getVideoMetadata = async (mediaPath: string): Promise<VideoMetadata
 }
 
 
+const buildVideoQualityOptions = (videoEncoder: string): string[] =>
+    videoEncoder === 'h264_nvenc'
+        ? ['-rc', 'vbr', '-cq', '23']
+        : ['-crf', '22', '-preset', 'medium'];
+
 const buildDashOutputOptions = (videoEncoder: string, h264Level: string, extraVideoOptions: string[] = []) => [
     '-f dash',
     '-avoid_negative_ts', 'make_zero',
@@ -214,6 +219,7 @@ const buildDashOutputOptions = (videoEncoder: string, h264Level: string, extraVi
     '-map 0:v',
     '-map 0:a?',
     '-c:v', videoEncoder,
+    ...buildVideoQualityOptions(videoEncoder),
     ...extraVideoOptions,
     '-vf', 'setpts=PTS-STARTPTS',
     '-sc_threshold', '0',
