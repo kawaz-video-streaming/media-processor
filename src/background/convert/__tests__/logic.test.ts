@@ -72,7 +72,8 @@ describe('convertMedia', () => {
         chapters: [],
         videoStreams: [],
         audioStreams: [],
-        subtitleStreams: []
+        subtitleStreams: [],
+        h264Level: '4.0'
     };
 
     beforeEach(() => {
@@ -143,7 +144,8 @@ describe('convertMedia', () => {
             workPaths.mpdPath,
             mockVideoMetadata.audioStreams,
             mockAmqpClient,
-            payload.mediaId
+            payload.mediaId,
+            mockVideoMetadata.h264Level
         );
     });
 
