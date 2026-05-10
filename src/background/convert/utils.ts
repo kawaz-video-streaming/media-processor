@@ -119,6 +119,29 @@ const formatDurationInMs = (duration: any) => {
     return (hours * 3600 + minutes * 60 + seconds) * 1000;
 }
 
+const parseFps = (rFrameRate?: string): number => {
+    if (!rFrameRate) return 30;
+    const [num, den] = rFrameRate.split('/').map(Number);
+    return den ? num / den : num;
+};
+
+const computeH264Level = (width: number, height: number, fps: number): string => {
+    const mbPerFrame = Math.ceil(width / 16) * Math.ceil(height / 16);
+    const mbPerSecond = mbPerFrame * fps;
+    const levels = [
+        { level: '3.0', maxMBPS: 40_500,     maxFS: 1_620  },
+        { level: '3.1', maxMBPS: 108_000,    maxFS: 3_600  },
+        { level: '3.2', maxMBPS: 216_000,    maxFS: 5_120  },
+        { level: '4.0', maxMBPS: 245_760,    maxFS: 8_192  },
+        { level: '4.1', maxMBPS: 245_760,    maxFS: 8_192  },
+        { level: '4.2', maxMBPS: 522_240,    maxFS: 8_704  },
+        { level: '5.0', maxMBPS: 589_824,    maxFS: 22_080 },
+        { level: '5.1', maxMBPS: 983_040,    maxFS: 36_864 },
+        { level: '5.2', maxMBPS: 2_073_600,  maxFS: 36_864 },
+    ];
+    return levels.find(l => l.maxFS >= mbPerFrame && l.maxMBPS >= mbPerSecond)?.level ?? '5.2';
+};
+
 const getVideoStreams = (mediaStreams: FfprobeStream[], defaultVideoTitle: string, defaultVideoDuration: number): VideoStream[] => {
     const videoStreams = mediaStreams.filter(({ codec_type }) => codec_type === 'video').map(stream => ({
         title: stream.tags?.title ?? defaultVideoTitle,
@@ -166,18 +189,25 @@ export const getVideoMetadata = async (mediaPath: string): Promise<VideoMetadata
     const mediaVideoStreams = getVideoStreams(mediaStreams, mediaName, mediaDurationInMs);
     const mediaAudioStreams = getAudioStreams(mediaStreams, mediaDurationInMs);
     const mediaSubtitleStreams = getSubtitleStreams(mediaStreams, mediaDurationInMs);
+    const firstVideoStream = mediaStreams.find(s => s.codec_type === 'video');
+    const h264Level = computeH264Level(
+        firstVideoStream?.width ?? 1920,
+        firstVideoStream?.height ?? 1080,
+        parseFps(firstVideoStream?.r_frame_rate)
+    );
     return {
         name: mediaName,
         durationInMs: mediaDurationInMs,
         chapters: mediaChapters,
         videoStreams: mediaVideoStreams,
         audioStreams: mediaAudioStreams,
-        subtitleStreams: mediaSubtitleStreams
+        subtitleStreams: mediaSubtitleStreams,
+        h264Level
     };
 }
 
 
-const buildDashOutputOptions = (videoEncoder: string, extraVideoOptions: string[] = []) => [
+const buildDashOutputOptions = (videoEncoder: string, h264Level: string, extraVideoOptions: string[] = []) => [
     '-f dash',
     '-avoid_negative_ts', 'make_zero',
     '-force_key_frames', 'expr:gte(t,n_forced*4)',
@@ -189,7 +219,7 @@ const buildDashOutputOptions = (videoEncoder: string, extraVideoOptions: string[
     '-sc_threshold', '0',
     '-pix_fmt', 'yuv420p',
     '-profile:v', 'main',
-    '-level:v', '4.0',
+    '-level:v', h264Level,
     '-c:a', 'aac',
     '-af', 'aresample=async=1:first_pts=0',
     '-use_template', '1',
@@ -205,12 +235,12 @@ const createProgressPublisher = (amqpClient: AmqpClient, mediaId: string, startP
         amqpClient.publish<Progress>('progress', 'progress.media', { mediaId, percentage: startPct + (pct / 100) * weight, status: 'processing' });
     };
 
-export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string, audioStreams: AudioStream[], amqpClient: AmqpClient, mediaId: string) => {
+export const convertMediaToDashStream = async (mediaPath: string, mpdPath: string, audioStreams: AudioStream[], amqpClient: AmqpClient, mediaId: string, h264Level: string) => {
     const videoEncoder = await isEncoderAvailable('h264_nvenc') ? 'h264_nvenc' : 'libx264';
     const audioDownmixingOption = audioStreams.some(stream => stream.codec !== 'aac' && stream.channels > 2) ? ['-ac', '2'] : [];
     const inputOptions = videoEncoder === 'h264_nvenc' ? ['-hwaccel', 'cuda'] : [];
     console.log('convering media to dash stream with: ', videoEncoder);
-    await runFfmpegWithInputOptions(mediaPath, mpdPath, inputOptions, buildDashOutputOptions(videoEncoder, audioDownmixingOption), createProgressPublisher(amqpClient, mediaId, 40, 50));
+    await runFfmpegWithInputOptions(mediaPath, mpdPath, inputOptions, buildDashOutputOptions(videoEncoder, h264Level, audioDownmixingOption), createProgressPublisher(amqpClient, mediaId, 40, 50));
     await unlink(mediaPath);
 }
 

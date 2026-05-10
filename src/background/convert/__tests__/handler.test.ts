@@ -48,7 +48,8 @@ describe('convertMediaHandler', () => {
         chapters: [],
         videoStreams: [],
         audioStreams: [],
-        subtitleStreams: []
+        subtitleStreams: [],
+        h264Level: '4.0'
     };
 
     const basePayload = {
@@ -121,7 +122,8 @@ describe('onConvertSuccessHandler', () => {
         chapters: [],
         videoStreams: [],
         audioStreams: [],
-        subtitleStreams: []
+        subtitleStreams: [],
+        h264Level: '4.0'
     };
 
     beforeEach(() => {

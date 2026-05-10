@@ -7,7 +7,10 @@
       "Bash(ffmpeg -h full)",
       "Bash(col -b)",
       "Read(//g//**)",
-      "WebFetch(domain:manpages.org)"
+      "WebFetch(domain:manpages.org)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:pypi.org)"
     ]
   }
 }

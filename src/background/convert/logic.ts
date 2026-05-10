@@ -19,7 +19,7 @@ export const convertMedia = async (
     await generateChaptersTrack(chapters, workDirPath);
     await generateThumbnailsTrack(mediaPath, workDirPath, videoMetadata.durationInMs, config.thumbnailConfig);
     amqpClient.publish<Progress>('progress', 'progress.media', { mediaId, percentage: 40, status: 'processing' });
-    await convertMediaToDashStream(mediaPath, mpdPath, videoMetadata.audioStreams, amqpClient, mediaId);
+    await convertMediaToDashStream(mediaPath, mpdPath, videoMetadata.audioStreams, amqpClient, mediaId, videoMetadata.h264Level);
     await addSubtitlesToMpd(mpdPath, subtitlePaths, subtitleStreams);
     amqpClient.publish<Progress>('progress', 'progress.media', { mediaId, percentage: 90, status: 'processing' });
     await uploadStreamToStorage(amqpClient, storageClient, mediaId, workDirPath, config);
