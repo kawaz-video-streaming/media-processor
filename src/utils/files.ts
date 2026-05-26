@@ -1,5 +1,7 @@
-import { mkdir, readdir } from 'fs/promises';
+import { mkdir, readdir, rm } from 'fs/promises';
 import { join } from 'path';
+
+const TMP_PATH = join(__dirname, '../../tmp');
 
 export const formatPath = (filePath: string) => filePath.replace(/\\/g, '/');
 
@@ -21,4 +23,9 @@ export const collectFilesRecursively = async (dirPath: string): Promise<string[]
     return files.flat();
 };
 
-export const createTempFolder = () => mkdir(join(__dirname, '../../tmp'), { recursive: true });
+export const createTempFolder = () => mkdir(TMP_PATH, { recursive: true });
+
+export const cleanTempFolder = async () => {
+    const entries = await readdir(TMP_PATH, { withFileTypes: true }).catch(() => []);
+    await Promise.all(entries.map(entry => rm(join(TMP_PATH, entry.name), { recursive: true, force: true })));
+};
