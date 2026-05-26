@@ -21,8 +21,8 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 # Non-root user for least-privilege execution
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
-# Pre-create tmp dir — mounted as emptyDir volume in k8s
+RUN groupadd -r -g 1001 appgroup && useradd -r -u 1001 -g appgroup appuser
+# Pre-create tmp dir owned by appuser — no emptyDir mount or initContainer needed
 RUN mkdir -p /app/tmp && chown appuser:appgroup /app/tmp && chmod 755 /app/tmp
 USER appuser
 EXPOSE ${PORT}

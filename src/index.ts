@@ -1,6 +1,18 @@
 import { getConfig } from "./config";
 import { startSystem } from "./services/system";
-import { createTempFolder } from "./utils/files";
+import { cleanTempFolder, createTempFolder } from "./utils/files";
+
+const shutdown = async () => {
+    try {
+        await cleanTempFolder();
+    } catch (error) {
+        console.error('Failed to clean tmp folder during shutdown:', error);
+    }
+    process.exit(0);
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 const main = async () => {
     const config = getConfig(process.env);
