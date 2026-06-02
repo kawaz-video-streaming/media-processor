@@ -44,12 +44,18 @@ export interface VideoMetadata {
     h264Level: string;
 }
 
+export interface PublishedSubtitleStream extends Omit<SubtitleStream, 'index'> {
+    subtitleId: string;
+    fileName: string;
+    enabled: boolean;
+}
+
 export interface MediaMetadata extends Omit<VideoMetadata, 'chapters' | 'subtitleStreams' | 'audioStreams' | 'h264Level'> {
     playUrl: string;
     thumbnailsUrl: string;
     chaptersUrl?: string;
     chapters?: VideoChapter[];
-    subtitleStreams: Omit<SubtitleStream, 'index'>[];
+    subtitleStreams: PublishedSubtitleStream[];
     audioStreams: Omit<AudioStream, 'codec' | 'channels'>[];
 }
 
