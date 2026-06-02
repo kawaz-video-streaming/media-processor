@@ -275,6 +275,9 @@ export const convertMediaToDashStream = async (mediaPath: string, mpdPath: strin
     await unlink(mediaPath);
 }
 
+const escapeXml = (str: string): string =>
+    str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
 export const addSubtitlesToMpd = async (mpdPath: string, subtitlePaths: string[], subtitleStreams: SubtitleStream[]) => {
     if (isEmpty(subtitlePaths)) {
         return;
@@ -287,8 +290,8 @@ export const addSubtitlesToMpd = async (mpdPath: string, subtitlePaths: string[]
         const { language: subtitleLanguage, title: subtitleTitle } = subtitleStreams[index];
         const fileName = basename(subtitlePath);
         return [
-            `\t\t<AdaptationSet id="${id}" contentType="text" mimeType="text/vtt" lang="${subtitleLanguage}">`,
-            `\t\t\t<Label>${subtitleTitle}</Label>`,
+            `\t\t<AdaptationSet id="${id}" contentType="text" mimeType="text/vtt" lang="${escapeXml(subtitleLanguage)}">`,
+            `\t\t\t<Label>${escapeXml(subtitleTitle)}</Label>`,
             `\t\t\t<Role schemeIdUri="urn:mpeg:dash:role:2011" value="subtitle"/>`,
             `\t\t\t<Representation id="${id}" mimeType="text/vtt" codecs="wvtt">`,
             `\t\t\t\t<BaseURL>${fileName}</BaseURL>`,
@@ -296,7 +299,7 @@ export const addSubtitlesToMpd = async (mpdPath: string, subtitlePaths: string[]
             `\t\t</AdaptationSet>`,
         ].join('\n');
     }).join('\n');
-    const modified = mpdContent.replace('\n\t</Period>', `\n${subtitleSets}\n\t</Period>`);
+    const modified = mpdContent.replace(/\n\t<\/Period>/g, `\n${subtitleSets}\n\t</Period>`);
     await writeFile(mpdPath, modified, 'utf-8');
 }
 
