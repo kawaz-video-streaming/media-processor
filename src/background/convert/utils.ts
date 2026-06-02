@@ -10,6 +10,7 @@ import { isEncoderAvailable, runFfmpeg, runFfmpegWithInputOptions, runFfprobe } 
 import { collectFilesRecursively, formatPath } from '../../utils/files';
 import { NonVideoMediaError } from './errors';
 import { AudioStream, Convert, ConvertConfig, Progress, SubtitleStream, ThumbnailConfig, VideoMetadata, VideoChapter, VideoStream, WorkPaths } from './types';
+import { GENERIC_SUBTITLE_TITLES } from './consts';
 import { AmqpClient } from '@ido_kawaz/amqp-client';
 
 
@@ -164,15 +165,39 @@ const getAudioStreams = (mediaStreams: FfprobeStream[], defaultAudioDuration: nu
             channels: stream.channels ?? 2
         }));
 
-const getSubtitleStreams = (mediaStreams: FfprobeStream[], defaultSubtitleDuration: number): SubtitleStream[] =>
-    mediaStreams
-        .filter(({ codec_type, codec_name }) => codec_type === 'subtitle' && ['ass', 'subrip', 'vtt'].includes(codec_name ?? ''))
-        .map((stream, index) => ({
-            index: stream.index ?? index,
-            language: stream.tags?.language ?? 'und',
-            title: stream.tags?.title ?? 'Subtitle',
-            durationInMs: formatDurationInMs(stream.tags?.DURATION) ?? defaultSubtitleDuration
-        }));
+const languageDisplayName = (lang: string): string => {
+    try {
+        return new Intl.DisplayNames(['en'], { type: 'language' }).of(lang) ?? lang.toUpperCase();
+    } catch {
+        return lang.toUpperCase();
+    }
+};
+
+const resolveSubtitleTitle = (stream: FfprobeStream, allStreams: FfprobeStream[], currentIndex: number): string => {
+    const rawTitle = stream.tags?.title?.trim() ?? '';
+    if (rawTitle && !GENERIC_SUBTITLE_TITLES.has(rawTitle.toLowerCase())) {
+        return rawTitle;
+    }
+    const lang = stream.tags?.language ?? 'und';
+    const sameLanguageBefore = allStreams
+        .slice(0, currentIndex)
+        .filter(s => (s.tags?.language ?? 'und') === lang)
+        .length;
+    const displayName = languageDisplayName(lang);
+    return sameLanguageBefore === 0 ? displayName : `${displayName} (${sameLanguageBefore + 1})`;
+};
+
+const getSubtitleStreams = (mediaStreams: FfprobeStream[], defaultSubtitleDuration: number): SubtitleStream[] => {
+    const subtitleOnly = mediaStreams.filter(({ codec_type, codec_name }) =>
+        codec_type === 'subtitle' && ['ass', 'subrip', 'vtt'].includes(codec_name ?? '')
+    );
+    return subtitleOnly.map((stream, index) => ({
+        index: stream.index ?? index,
+        language: stream.tags?.language ?? 'und',
+        title: resolveSubtitleTitle(stream, subtitleOnly, index),
+        durationInMs: formatDurationInMs(stream.tags?.DURATION) ?? defaultSubtitleDuration
+    }));
+};
 
 export const getVideoChapters = (mediaData: FfprobeData): VideoChapter[] => mediaData.chapters.map((chapter, index) => ({
     chapterName: chapter.tags?.title ?? `Chapter ${index + 1}`,
@@ -259,10 +284,11 @@ export const addSubtitlesToMpd = async (mpdPath: string, subtitlePaths: string[]
     const maxId = idMatches.reduce((max, match) => Math.max(max, parseInt(match[1])), -1);
     const subtitleSets = subtitlePaths.map((subtitlePath, index) => {
         const id = maxId + 1 + index;
-        const { language: subtitleLanguage } = subtitleStreams[index];
+        const { language: subtitleLanguage, title: subtitleTitle } = subtitleStreams[index];
         const fileName = basename(subtitlePath);
         return [
             `\t\t<AdaptationSet id="${id}" contentType="text" mimeType="text/vtt" lang="${subtitleLanguage}">`,
+            `\t\t\t<Label>${subtitleTitle}</Label>`,
             `\t\t\t<Role schemeIdUri="urn:mpeg:dash:role:2011" value="subtitle"/>`,
             `\t\t\t<Representation id="${id}" mimeType="text/vtt" codecs="wvtt">`,
             `\t\t\t\t<BaseURL>${fileName}</BaseURL>`,

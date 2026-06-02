@@ -1,19 +1,32 @@
+import { addSubtitlesToMpd, generateThumbnailsTrack, getVideoChapters, getVideoMetadata } from '../utils';
 import { NonVideoMediaError } from '../errors';
-import { generateThumbnailsTrack, getVideoChapters, getVideoMetadata } from '../utils';
 
 jest.mock('../../../utils/ffmpeg');
 jest.mock('fs/promises', () => ({
-    writeFile: jest.fn().mockResolvedValue(undefined)
+    writeFile: jest.fn().mockResolvedValue(undefined),
+    readFile: jest.fn().mockResolvedValue(''),
 }));
 
 import * as ffmpegUtils from '../../../utils/ffmpeg';
-import { writeFile } from 'fs/promises';
+import { writeFile, readFile } from 'fs/promises';
 
 const mockedRunFfprobe = ffmpegUtils.runFfprobe as jest.MockedFunction<typeof ffmpegUtils.runFfprobe>;
 const mockedRunFfmpegWithInputOptions = ffmpegUtils.runFfmpegWithInputOptions as jest.MockedFunction<typeof ffmpegUtils.runFfmpegWithInputOptions>;
 const mockedWriteFile = writeFile as jest.MockedFunction<typeof writeFile>;
+const mockedReadFile = readFile as jest.MockedFunction<typeof readFile>;
 
 const MEDIA_PATH = '/tmp/workspace/video.mp4';
+
+const SAMPLE_MPD = `<?xml version="1.0" encoding="utf-8"?>
+<MPD type="static">
+\t<Period>
+\t\t<AdaptationSet id="0" contentType="video" mimeType="video/mp4">
+\t\t\t<Representation id="0" mimeType="video/mp4">
+\t\t\t\t<BaseURL>init_v0.m4s</BaseURL>
+\t\t\t</Representation>
+\t\t</AdaptationSet>
+\t</Period>
+</MPD>`;
 
 describe('getVideoChapters', () => {
     it('maps chapter fields correctly', () => {
@@ -219,7 +232,7 @@ describe('getVideoMetadata', () => {
         expect(video.subtitleStreams[0].language).toBe('jpn');
     });
 
-    it('sets subtitle title from title tag when present', async () => {
+    it('uses the title tag directly when it is a meaningful value', async () => {
         mockedRunFfprobe.mockResolvedValue({
             format: { tags: {}, duration: 0 },
             chapters: [],
@@ -232,6 +245,66 @@ describe('getVideoMetadata', () => {
         const video = await getVideoMetadata(MEDIA_PATH);
         expect(video.subtitleStreams[0].title).toBe('Commentary');
         expect(video.subtitleStreams[0].language).toBe('eng');
+    });
+
+    it('generates a language-based title when the subtitle title tag is absent', async () => {
+        mockedRunFfprobe.mockResolvedValue({
+            format: { tags: {}, duration: 0 },
+            chapters: [],
+            streams: [
+                { codec_type: 'video', tags: {} },
+                { codec_type: 'subtitle', codec_name: 'ass', index: 1, tags: { language: 'eng' } }
+            ]
+        } as any);
+
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.subtitleStreams[0].title).toBe('English');
+    });
+
+    it('generates a language-based title when the subtitle title tag is a generic value', async () => {
+        mockedRunFfprobe.mockResolvedValue({
+            format: { tags: {}, duration: 0 },
+            chapters: [],
+            streams: [
+                { codec_type: 'video', tags: {} },
+                { codec_type: 'subtitle', codec_name: 'ass', index: 1, tags: { title: 'Subtitle', language: 'fra' } }
+            ]
+        } as any);
+
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.subtitleStreams[0].title).toBe('French');
+    });
+
+    it('disambiguates same-language subtitle tracks with a counter suffix', async () => {
+        mockedRunFfprobe.mockResolvedValue({
+            format: { tags: {}, duration: 0 },
+            chapters: [],
+            streams: [
+                { codec_type: 'video', tags: {} },
+                { codec_type: 'subtitle', codec_name: 'ass', index: 1, tags: { language: 'eng' } },
+                { codec_type: 'subtitle', codec_name: 'ass', index: 2, tags: { language: 'eng' } }
+            ]
+        } as any);
+
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.subtitleStreams[0].title).toBe('English');
+        expect(video.subtitleStreams[1].title).toBe('English (2)');
+    });
+
+    it('does not add a counter suffix when same-language tracks have distinct meaningful titles', async () => {
+        mockedRunFfprobe.mockResolvedValue({
+            format: { tags: {}, duration: 0 },
+            chapters: [],
+            streams: [
+                { codec_type: 'video', tags: {} },
+                { codec_type: 'subtitle', codec_name: 'ass', index: 1, tags: { title: 'English SDH', language: 'eng' } },
+                { codec_type: 'subtitle', codec_name: 'ass', index: 2, tags: { title: 'Forced', language: 'eng' } }
+            ]
+        } as any);
+
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.subtitleStreams[0].title).toBe('English SDH');
+        expect(video.subtitleStreams[1].title).toBe('Forced');
     });
 
     it('sets audio title from title tag when present', async () => {
@@ -263,4 +336,66 @@ describe('getVideoMetadata', () => {
     });
 });
 
+describe('addSubtitlesToMpd', () => {
+    const MPD_PATH = '/tmp/workspace/output.mpd';
+    const subtitleStreams = [
+        { index: 1, language: 'eng', title: 'English', durationInMs: 60000 },
+        { index: 2, language: 'fra', title: 'French', durationInMs: 60000 },
+    ];
+    const subtitlePaths = [
+        '/tmp/workspace/subtitles_0_eng.vtt',
+        '/tmp/workspace/subtitles_1_fra.vtt',
+    ];
 
+    beforeEach(() => {
+        mockedReadFile.mockResolvedValue(SAMPLE_MPD as any);
+        mockedWriteFile.mockResolvedValue(undefined);
+    });
+
+    it('does nothing when there are no subtitle paths', async () => {
+        await addSubtitlesToMpd(MPD_PATH, [], []);
+        expect(mockedWriteFile).not.toHaveBeenCalled();
+    });
+
+    it('writes a <Label> element for each subtitle track', async () => {
+        await addSubtitlesToMpd(MPD_PATH, subtitlePaths, subtitleStreams);
+
+        const written = mockedWriteFile.mock.calls[0][1] as string;
+        expect(written).toContain('<Label>English</Label>');
+        expect(written).toContain('<Label>French</Label>');
+    });
+
+    it('sets the lang attribute from the subtitle stream language', async () => {
+        await addSubtitlesToMpd(MPD_PATH, subtitlePaths, subtitleStreams);
+
+        const written = mockedWriteFile.mock.calls[0][1] as string;
+        expect(written).toContain('lang="eng"');
+        expect(written).toContain('lang="fra"');
+    });
+
+    it('uses the subtitle filename as the BaseURL', async () => {
+        await addSubtitlesToMpd(MPD_PATH, subtitlePaths, subtitleStreams);
+
+        const written = mockedWriteFile.mock.calls[0][1] as string;
+        expect(written).toContain('<BaseURL>subtitles_0_eng.vtt</BaseURL>');
+        expect(written).toContain('<BaseURL>subtitles_1_fra.vtt</BaseURL>');
+    });
+
+    it('assigns AdaptationSet ids that do not conflict with existing ids', async () => {
+        await addSubtitlesToMpd(MPD_PATH, subtitlePaths, subtitleStreams);
+
+        const written = mockedWriteFile.mock.calls[0][1] as string;
+        // existing AdaptationSet has id="0", so subtitle sets get id="1" and id="2"
+        expect(written).toContain('AdaptationSet id="1"');
+        expect(written).toContain('AdaptationSet id="2"');
+    });
+
+    it('injects subtitle sets before the closing </Period> tag', async () => {
+        await addSubtitlesToMpd(MPD_PATH, [subtitlePaths[0]], [subtitleStreams[0]]);
+
+        const written = mockedWriteFile.mock.calls[0][1] as string;
+        const subtitlePos = written.indexOf('contentType="text"');
+        const periodClosePos = written.indexOf('</Period>');
+        expect(subtitlePos).toBeLessThan(periodClosePos);
+    });
+});
