@@ -32,7 +32,14 @@ export const onConvertSuccessHandler = (amqpClient: AmqpClient) =>
                 { chaptersUrl: `${mediaId}/chapters.vtt`, chapters: videoMetadata.chapters }
                 : {}
             ),
-            subtitleStreams: videoMetadata.subtitleStreams.map(omit(['index'])),
+            subtitleStreams: videoMetadata.subtitleStreams.map((stream, i) => ({
+            language: stream.language,
+            title: stream.title,
+            durationInMs: stream.durationInMs,
+            subtitleId: `subtitles_${i}_${stream.language}`,
+            fileName: `subtitles_${i}_${stream.language}.vtt`,
+            enabled: true,
+        })),
             audioStreams: videoMetadata.audioStreams.map(omit(['codec', 'channels'])),
             ...omit(['chapters', 'subtitleStreams', 'audioStreams'], videoMetadata)
         }

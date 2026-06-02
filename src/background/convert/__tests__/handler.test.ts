@@ -179,7 +179,7 @@ describe('onConvertSuccessHandler', () => {
         expect(metadata.chapters).toEqual(metadataWithChapters.chapters);
     });
 
-    it('strips index from subtitle streams', async () => {
+    it('strips index and adds subtitleId, fileName, enabled to subtitle streams', async () => {
         const metadataWithSubtitles: VideoMetadata = {
             ...baseMetadata,
             subtitleStreams: [
@@ -193,8 +193,8 @@ describe('onConvertSuccessHandler', () => {
 
         const { metadata } = (mockAmqpClient.publish as jest.Mock).mock.calls[0][2];
         expect(metadata.subtitleStreams).toEqual([
-            { language: 'eng', title: 'English', durationInMs: 120000 },
-            { language: 'fra', title: 'French', durationInMs: 120000 }
+            { language: 'eng', title: 'English', durationInMs: 120000, subtitleId: 'subtitles_0_eng', fileName: 'subtitles_0_eng.vtt', enabled: true },
+            { language: 'fra', title: 'French', durationInMs: 120000, subtitleId: 'subtitles_1_fra', fileName: 'subtitles_1_fra.vtt', enabled: true }
         ]);
     });
 
