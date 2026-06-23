@@ -76,6 +76,8 @@ On startup, the service validates config, initializes DB, starts AMQP, registers
 
 - `GET /health` -> `200 OK`
 - `GET /api-docs` -> Swagger UI
+  - Local: `http://localhost:8081/api-docs`
+  - Production: `https://media-processor.kawazplus.com` (redirects to `/api-docs`)
 
 ## Background Consumers
 
