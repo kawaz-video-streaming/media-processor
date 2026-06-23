@@ -184,7 +184,7 @@ describe('getVideoMetadata', () => {
         await expect(getVideoMetadata(MEDIA_PATH)).rejects.toThrow(NonVideoMediaError);
     });
 
-    it('includes subtitle streams with codec_name "ass", "subrip", or "vtt"', async () => {
+    it('includes subtitle streams with codec_name "ass", "subrip", "vtt", or "mov_text"', async () => {
         mockedRunFfprobe.mockResolvedValue({
             format: { tags: {}, duration: 0 },
             chapters: [],
@@ -192,14 +192,48 @@ describe('getVideoMetadata', () => {
                 { codec_type: 'video', tags: {} },
                 { codec_type: 'subtitle', codec_name: 'ass', index: 1, tags: { language: 'eng' } },
                 { codec_type: 'subtitle', codec_name: 'subrip', index: 2, tags: { language: 'fra' } },
-                { codec_type: 'subtitle', codec_name: 'dvd_subtitle', index: 3, tags: { language: 'deu' } }
+                { codec_type: 'subtitle', codec_name: 'mov_text', index: 3, tags: { language: 'deu' } },
+                { codec_type: 'subtitle', codec_name: 'dvd_subtitle', index: 4, tags: { language: 'spa' } }
             ]
         } as any);
 
         const video = await getVideoMetadata(MEDIA_PATH);
-        expect(video.subtitleStreams).toHaveLength(2);
+        expect(video.subtitleStreams).toHaveLength(3);
         expect(video.subtitleStreams[0].language).toBe('eng');
         expect(video.subtitleStreams[1].language).toBe('fra');
+        expect(video.subtitleStreams[2].language).toBe('deu');
+    });
+
+    it('includes mov_text subtitles and resolves their titles from language code', async () => {
+        mockedRunFfprobe.mockResolvedValue({
+            format: { tags: {}, duration: 0 },
+            chapters: [],
+            streams: [
+                { codec_type: 'video', tags: {} },
+                { codec_type: 'subtitle', codec_name: 'mov_text', index: 1, tags: { language: 'jpn' } }
+            ]
+        } as any);
+
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.subtitleStreams).toHaveLength(1);
+        expect(video.subtitleStreams[0].language).toBe('jpn');
+        expect(video.subtitleStreams[0].title).toBe('Japanese');
+    });
+
+    it('excludes bitmap-based subtitle codecs that cannot be converted to WebVTT', async () => {
+        mockedRunFfprobe.mockResolvedValue({
+            format: { tags: {}, duration: 0 },
+            chapters: [],
+            streams: [
+                { codec_type: 'video', tags: {} },
+                { codec_type: 'subtitle', codec_name: 'dvd_subtitle', index: 1, tags: { language: 'eng' } },
+                { codec_type: 'subtitle', codec_name: 'hdmv_pgs_subtitle', index: 2, tags: { language: 'eng' } },
+                { codec_type: 'subtitle', codec_name: 'dvb_subtitle', index: 3, tags: { language: 'eng' } }
+            ]
+        } as any);
+
+        const video = await getVideoMetadata(MEDIA_PATH);
+        expect(video.subtitleStreams).toHaveLength(0);
     });
 
     it('uses actual FFprobe stream index for subtitle index', async () => {

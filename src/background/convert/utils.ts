@@ -10,7 +10,7 @@ import { isEncoderAvailable, runFfmpeg, runFfmpegWithInputOptions, runFfprobe } 
 import { collectFilesRecursively, formatPath } from '../../utils/files';
 import { NonVideoMediaError } from './errors';
 import { AudioStream, Convert, ConvertConfig, Progress, SubtitleStream, ThumbnailConfig, VideoMetadata, VideoChapter, VideoStream, WorkPaths } from './types';
-import { GENERIC_SUBTITLE_TITLES } from './consts';
+import { GENERIC_SUBTITLE_TITLES, SUPPORTED_SUBTITLE_CODECS } from './consts';
 import { AmqpClient } from '@ido_kawaz/amqp-client';
 
 
@@ -189,7 +189,7 @@ const resolveSubtitleTitle = (stream: FfprobeStream, allStreams: FfprobeStream[]
 
 const getSubtitleStreams = (mediaStreams: FfprobeStream[], defaultSubtitleDuration: number): SubtitleStream[] => {
     const subtitleOnly = mediaStreams.filter(({ codec_type, codec_name }) =>
-        codec_type === 'subtitle' && ['ass', 'subrip', 'vtt'].includes(codec_name ?? '')
+        codec_type === 'subtitle' && SUPPORTED_SUBTITLE_CODECS.has(codec_name ?? '')
     );
     return subtitleOnly.map((stream, index) => ({
         index: stream.index ?? index,

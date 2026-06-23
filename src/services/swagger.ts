@@ -40,7 +40,7 @@ const options: swaggerJsdoc.Options = {
             },
         },
     },
-    apis: ["./src/api/**/*.ts"],
+    apis: [process.env.NODE_ENV === "local" ? "./src/api/**/*.ts" : "./dist/api/**/*.js"],
 };
 
 export const swaggerSpec = swaggerJsdoc(options);
